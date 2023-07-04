@@ -40,7 +40,8 @@ public class RTClothMesh : ModuleRules
 				"SlateCore",
 				// ... add private dependencies that you statically link with here ...	
 				"RenderCore",
-				"RHI"
+				"RHI",
+				"RawMesh"
 			}
 			);
 		
