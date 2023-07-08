@@ -17,6 +17,9 @@
 
 #include <Engine/Engine.h>
 
+#include <Math/FRTSparseMatrix.h>
+#include <Math/FRTMatrix.h>
+
 // data pack
 struct FClothMeshPackedData
 {
@@ -47,11 +50,13 @@ public:
 		{
 			FDynamicMeshVertex& Vert = Vertices[VertIdx];
 			Vert.Position = ClothMesh->Positions[VertIdx];
-			Vert.Color = FColor::White;
-			Vert.TextureCoordinate[0] = {0, 0};
-			Vert.TangentZ = FVector(0, 0, 1);
-			Vert.TangentZ.Vector.W = 127;
-			// TODO more data needed.
+			Vert.Color = ClothMesh->Colors[VertIdx];
+			Vert.TextureCoordinate[0] = ClothMesh->TexCoords[VertIdx];
+			Vert.SetTangents(
+				ClothMesh->TangentXArray[VertIdx],
+				ClothMesh->TangentYArray[VertIdx],
+				ClothMesh->TangentZArray[VertIdx]
+			);
 		}
 
 		// Copy index buffer
@@ -220,8 +225,8 @@ URTClothMeshComponent::URTClothMeshComponent(const FObjectInitializer& ObjectIni
 
 void URTClothMeshComponent::OnRegister()
 {
-	Super::OnRegister();	
-
+	Super::OnRegister();
+	
 	// get static mesh and material
 	TArray<UStaticMeshComponent*> Components;
 	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
@@ -234,16 +239,32 @@ void URTClothMeshComponent::OnRegister()
 			// get the original vertex data
 			const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
 			const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
-			// TODO const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
+			const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
+			const auto& CVB = LODResource.VertexBuffers.ColorVertexBuffer;
 			const auto& IB = LODResource.IndexBuffer;
 			// build up our mesh
 			ClothMesh = std::make_unique<FClothRawMesh>();
 			// get vertex data
 			auto const NumVertex = VB.GetNumVertices();
+			const bool HasColor = CVB.IsInitialized() && CVB.GetNumVertices() == NumVertex;
 			ClothMesh->Positions.Reserve(NumVertex);
+			ClothMesh->TexCoords.Reserve(NumVertex);
+			ClothMesh->TangentXArray.Reserve(NumVertex);
+			ClothMesh->TangentYArray.Reserve(NumVertex);
+			ClothMesh->TangentZArray.Reserve(NumVertex);
+			ClothMesh->Colors.Reserve(NumVertex);
+			ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
 			for (uint32 i = 0; i < NumVertex; i ++)
 			{
+				// position, TODO apply transforms
 				ClothMesh->Positions.Add(VB.VertexPosition(i));
+				// UV
+				ClothMesh->TexCoords.Add(SVB.GetVertexUV(i, 0));
+				// tangent, TODO Check W in tangents X and Z
+				ClothMesh->TangentXArray.Add(SVB.VertexTangentX(i));
+				ClothMesh->TangentYArray.Add(SVB.VertexTangentY(i));
+				ClothMesh->TangentZArray.Add(SVB.VertexTangentZ(i));
+				ClothMesh->Colors.Add(HasColor ? CVB.VertexColor(i) : FColor::Cyan);
 			}
 			// get index data;
 			auto const &IBData = IB.GetArrayView();
@@ -253,7 +274,6 @@ void URTClothMeshComponent::OnRegister()
 			{
 				ClothMesh->Indices.Add(IBData[i]);
 			}
-			// TODO get texCoord from SVB
 		}
 	}
 	MarkRenderDynamicDataDirty();
@@ -262,16 +282,22 @@ void URTClothMeshComponent::OnRegister()
 void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-	
+
+	// get static mesh and material
+	TArray<UStaticMeshComponent*> Components;
+	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
+	if (Components.Num() > 0 && ClothMesh != nullptr)
+	{
+		// update attached transform, TODO : external force here
+		ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
+	}
+	// TODO : notify solver
 	// Need to send new data to render thread
 	MarkRenderDynamicDataDirty();
 	UpdateComponentToWorld();
 }
 
 // override scene proxy
-
-
-// create a scene proxy
 FPrimitiveSceneProxy *URTClothMeshComponent::CreateSceneProxy()
 {
 	return new FClothMeshSceneProxy(this, ClothMesh);

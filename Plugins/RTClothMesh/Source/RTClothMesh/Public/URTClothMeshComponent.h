@@ -2,44 +2,15 @@
 
 #include <memory>
 
+#include "RTClothStructures.h"
+
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Components/MeshComponent.h"
 #include "URTClothMeshComponent.generated.h"
 
-
 class UStaticMesh;
 class FPrimitiveSceneProxy;
-
-struct FClothRawMesh
-{
-	FClothRawMesh(){}
-	// disable copy
-	FClothRawMesh(FClothRawMesh &) = delete;
-	FClothRawMesh operator=(FClothRawMesh &) = delete;
-	// enable move
-	FClothRawMesh (FClothRawMesh &&other) noexcept
-	{
-		Positions = std::move(other.Positions);
-		TexCoords = std::move(other.TexCoords);
-		Indices = std::move(other.Indices);
-	}
-	
-	FClothRawMesh& operator=(FClothRawMesh &&other) noexcept
-	{
-		*this = std::move(other);
-		return *this;
-	}
-	TArray<FVector> Positions;
-	TArray<FVector2D> TexCoords;
-	TArray<uint32> Indices;
-
-	TArray<FVector> GetSmoothNormals()
-	{
-		return Positions;
-	}
-};
-
 //This is a mesh effect component
 UCLASS(hidecategories = (Object, LOD, Physics, Collision), editinlinenew, meta = (BlueprintSpawnableComponent), ClassGroup = Rendering, DisplayName = "URTClothMeshComponent")
 class URTClothMeshComponent : public UMeshComponent
