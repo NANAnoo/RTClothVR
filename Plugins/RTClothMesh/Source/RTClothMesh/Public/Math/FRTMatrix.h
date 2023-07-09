@@ -15,7 +15,7 @@ public:
 	}
 
 	// calculation
-	FRTMatrix<Real, Raw, Raw> operator*(FRTMatrix<Real, Col, Raw> const&Mat) const
+	FORCEINLINE FRTMatrix<Real, Raw, Raw> operator*(FRTMatrix<Real, Col, Raw> const&Mat) const
 	{
 		FRTMatrix<Real, Raw, Raw> Res;
 		for (uint32 i = 0; i < Raw; i ++)
@@ -31,7 +31,7 @@ public:
 		return Res;
 	}
 
-	FRTMatrix Dot(FRTMatrix const&Other)
+	FORCEINLINE FRTMatrix Dot(FRTMatrix const&Other)
 	{
 		FRTMatrix Res;
 		for (uint32 i = 0; i < Raw * Col; i ++)
@@ -41,7 +41,7 @@ public:
 		return Res;
 	}
 
-	FRTMatrix& operator*=(FRTMatrix const&Other)
+	FORCEINLINE FRTMatrix& operator*=(FRTMatrix const&Other)
 	{
 		for (uint32 i = 0; i < Raw * Col; i ++)
 		{
@@ -50,12 +50,12 @@ public:
 		return *this;
 	}
 
-	FRTMatrix<Real, Raw, Raw> Mul(FRTMatrix<Real, Col, Raw> const&Other)
+	FORCEINLINE FRTMatrix<Real, Raw, Raw> Mul(FRTMatrix<Real, Col, Raw> const&Other)
 	{
 		return (*this) * Other;
 	}
 
-	FRTMatrix operator+(FRTMatrix const& Other)
+	FORCEINLINE FRTMatrix operator+(FRTMatrix const& Other)
 	{
 		FRTMatrix Res;
 		for (uint32 i = 0; i < Raw * Col; i ++)
@@ -65,7 +65,7 @@ public:
 		return Res;
 	}
 
-	FRTMatrix operator-(FRTMatrix const& Other)
+	FORCEINLINE FRTMatrix operator-(FRTMatrix const& Other)
 	{
 		FRTMatrix Res;
 		for (uint32 i = 0; i < Raw * Col; i ++)
@@ -75,7 +75,7 @@ public:
 		return Res;
 	}
 
-	FRTMatrix& operator+=(FRTMatrix const& Other)
+	FORCEINLINE FRTMatrix& operator+=(FRTMatrix const& Other)
 	{
 		for (uint32 i = 0; i < Raw * Col; i ++)
 		{
@@ -84,7 +84,7 @@ public:
 		return *this;
 	}
 
-	FRTMatrix& operator-=(FRTMatrix const& Other)
+	FORCEINLINE FRTMatrix& operator-=(FRTMatrix const& Other)
 	{
 		for (uint32 i = 0; i < Raw * Col; i ++)
 		{
@@ -94,7 +94,7 @@ public:
 	}
 	
 	template<uint32 R>
-	friend FRTMatrix<float, R, 1> operator*(FRTMatrix<float, R, 3> const& Mat, FVector const& Vec)
+	FORCEINLINE friend FRTMatrix<float, R, 1> operator*(FRTMatrix<float, R, 3> const& Mat, FVector const& Vec)
 	{
 		FRTMatrix<float, R, 1> Res;
 		for (uint32 i = 0; i < R; i ++)
@@ -104,7 +104,7 @@ public:
 		return Res;
 	}
 	
-	friend FVector operator*(FRTMatrix<float, 3, 3> const& Mat, FVector const& Vec)
+	FORCEINLINE friend FVector operator*(FRTMatrix<float, 3, 3> const& Mat, FVector const& Vec)
 	{
 		return {
 			Mat[0][0] * Vec[0] + Mat[0][1] * Vec[1] + Mat[0][2] * Vec[2],
@@ -113,27 +113,45 @@ public:
 		};
 	}
 	
-	static FRTMatrix<Real, Raw, Raw> Identity()
+	FORCEINLINE static FRTMatrix<Real, Raw, Raw> Identity()
 	{
 		FRTMatrix<Real, Raw, Raw> Res;
 		for (uint32 i = 0; i < Raw; i ++)
 		{
-			Res[i][0] = Real(1.0);
+			Res[i][i] = Real(1.0);
 		}
 		return Res;
 	}
 
-	static FRTMatrix<Real, Raw, Raw> Diag(Real const Value)
+	FORCEINLINE static FRTMatrix<Real, 3, 3> CrossVec(FVector const& V1, FVector const& V2)
+	{
+		FRTMatrix<Real, 3, 3> Res;
+		Res[0][0] = V1[0] * V2[0];
+		Res[0][1] = V1[0] * V2[1];
+		Res[0][2] = V1[0] * V2[2];
+		
+		Res[1][0] = V1[1] * V2[0];
+		Res[1][1] = V1[1] * V2[1];
+		Res[1][2] = V1[1] * V2[2];
+		
+		Res[2][0] = V1[2] * V2[0];
+		Res[2][1] = V1[2] * V2[1];
+		Res[2][2] = V1[2] * V2[2];
+		
+		return Res;
+	}
+
+	FORCEINLINE static FRTMatrix<Real, Raw, Raw> Diag(Real const Value)
 	{
 		FRTMatrix<Real, Raw, Raw> Res;
 		for (uint32 i = 0; i < Raw; i ++)
 		{
-			Res[i][0] = Value;
+			Res[i][i] = Value;
 		}
 		return Res;
 	}
 	
-	FRTMatrix operator*(Real Scale) const
+	FORCEINLINE FRTMatrix operator*(Real Scale) const
 	{
 		FRTMatrix Res;
 		for (uint32 i = 0; i < Raw * Col; i ++)
@@ -143,18 +161,28 @@ public:
 		return Res;
 	}
 
-	FRTMatrix operator/(Real Scale) const
+	FORCEINLINE friend FRTMatrix operator*(Real Scale, FRTMatrix const& Mat)
+	{
+		FRTMatrix Res;
+		for (uint32 i = 0; i < Raw * Col; i ++)
+		{
+			Res.Data[i] = Mat.Data[i] * Scale;
+		}
+		return Res;
+	}
+
+	FORCEINLINE FRTMatrix operator/(Real Scale) const
 	{
 		return *this * Scale;
 	}
 	
-	FRTMatrix operator/=(Real Scale) const
+	FORCEINLINE FRTMatrix operator/=(Real Scale) const
 	{
 		*this *= Real(1) / Scale;
 		return *this;
 	}
 
-	FRTMatrix& operator*=(Real Scale) const
+	FORCEINLINE FRTMatrix& operator*=(Real Scale) const
 	{
 		for (uint32 i = 0; i < Raw * Col; i ++)
 		{
@@ -163,8 +191,8 @@ public:
 		return *this;
 	}
 	
-	static constexpr uint32 Raws() {return Raw;}
-	static constexpr uint32 Cols() {return Col;}
+	FORCEINLINE static constexpr uint32 Raws() {return Raw;}
+	FORCEINLINE static constexpr uint32 Cols() {return Col;}
 protected:
 	Real Data[Raw * Col] = {Real(0)};
 };

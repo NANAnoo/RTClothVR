@@ -95,6 +95,8 @@ public:
 		}
 		Compressed = true;
 	}
+
+	// TODO, Lock Pattern
 	
 	void MulVector(BlockType const* InData, BlockType *OutData, uint32 const Len)
 	{

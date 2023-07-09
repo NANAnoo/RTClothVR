@@ -17,8 +17,7 @@
 
 #include <Engine/Engine.h>
 
-#include <Math/FRTSparseMatrix.h>
-#include <Math/FRTMatrix.h>
+#include <FRTStretchCondition.h>
 
 // data pack
 struct FClothMeshPackedData
@@ -187,7 +186,7 @@ public:
 		}
 		
 		{
-			// upload to GPU
+			// upload to GPU, update position only
 			auto& VertexBuffer = VertexBuffers.PositionVertexBuffer;
 			void* VertexBufferData = RHILockVertexBuffer(VertexBuffer.VertexBufferRHI, 0, VertexBuffer.GetNumVertices() * VertexBuffer.GetStride(), RLM_WriteOnly);
 			FMemory::Memcpy(VertexBufferData, VertexBuffer.GetVertexData(), VertexBuffer.GetNumVertices() * VertexBuffer.GetStride());

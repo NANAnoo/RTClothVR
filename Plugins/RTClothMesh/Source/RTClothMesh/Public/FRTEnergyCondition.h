@@ -12,5 +12,5 @@ public:
 		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV, float K, float D,
 		TArray<FVector> &Forces, FRTBBSSMatrix<float> &dfdx,
 		TArray<FVector> &DampingF,  FRTBBSSMatrix<float> &dddx,  FRTBBSSMatrix<float> &dddv
-	) const = 0;
+	) = 0;
 };

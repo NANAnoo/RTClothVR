@@ -38,9 +38,9 @@ struct FClothRawMesh
 };
 
  
-struct FClothTriangleStaticQuantities
+struct FClothTriangleStaticProperties
 {
-	explicit FClothTriangleStaticQuantities(
+	explicit FClothTriangleStaticProperties(
 		const FVector2D &uv0, const FVector2D &uv1, const FVector2D &uv2
 	)
 	{
@@ -52,7 +52,7 @@ struct FClothTriangleStaticQuantities
 		du2 = duv2[0];
 		dv2 = duv2[1];
 		// triangle area in reference pose:
-		a = 0.5f * (du1 * dv2 - du2 * dv1);
+		a = 0.5f * abs(du1 * dv2 - du2 * dv1);
 
 		// first derivatives of uv tangents:
 		dwudP0Scalar = (dv1 - dv2) / (2 * a);
@@ -82,23 +82,27 @@ struct FClothTriangleStaticQuantities
 };
 
 // computed only once
-struct FClothTriangleQuantities : public FClothTriangleStaticQuantities
+struct FClothTriangleProperties : public FClothTriangleStaticProperties
 {
+public:
 	// tangent vectors:
 	FVector wu, wv;
+	float wuNorm = 0, wvNorm = 0;
 
-	FClothTriangleQuantities (
+	FClothTriangleProperties (
 		const FVector2D &uv0, const FVector2D &uv1, const FVector2D &uv2
-	) : FClothTriangleStaticQuantities(uv0, uv1, uv2)
+	) : FClothTriangleStaticProperties(uv0, uv1, uv2)
 	{
 	}
 
-	virtual ~FClothTriangleQuantities() {}
+	virtual ~FClothTriangleProperties() {}
 
-	virtual void UpdatePositions(const FVector &p0, const FVector &p1, const FVector &p2)
+	virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2)
 	{
 		// trangle tangents in reference directions:
-		wu = ((p1 - p0) * dv2 - (p2 - p0) * dv1) / (2 * a);
-		wv = (-(p1 - p0) * du2 + (p2 - p0) * du1) / (2 * a);
+		wu = ((P1 - P0) * dv2 - (P2 - P0) * dv1) / (2 * a);
+		wv = (-(P1 - P0) * du2 + (P2 - P0) * du1) / (2 * a);
+		wuNorm = wu.Size();
+		wvNorm = wv.Size();
 	}
 };
