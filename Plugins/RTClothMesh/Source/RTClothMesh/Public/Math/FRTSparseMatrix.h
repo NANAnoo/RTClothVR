@@ -13,6 +13,21 @@ public:
 		
 		BlockType& operator[](uint32 const J)
 		{
+			// TODO, check if pattern locked
+			Mat->ReleaseCompressedData();
+			if (J == Raw)
+			{
+				return Mat->DiagData[J];
+			}
+			if (!Mat->TempData[Raw].Contains(J))
+			{
+				Mat->TempData[Raw].Add(J, BlockType());
+			}
+			return Mat->TempData[Raw][J];
+		}
+
+		const BlockType& operator[](uint32 const J) const
+		{
 			if (J == Raw)
 			{
 				return Mat->DiagData[J];
@@ -36,31 +51,35 @@ public:
 	FRTBBSSMatrixRaw operator[](uint32 I)
 	{
 		check(I < Size);
+		return FRTBBSSMatrixRaw(this, I);
+	}
+
+	FORCEINLINE void ReleaseCompressedData()
+	{
 		if (Compressed)
 		{
-			Compressed = false;
-			delete[] OffDiagData;
-			delete[] NumEntriesOfRaw;
-			delete[] ColIndexAtRaw;
-			OffDiagData = nullptr;
-			NumEntriesOfRaw = nullptr;
-			ColIndexAtRaw = nullptr;
+			if (OffDiagData)
+			{
+				delete[] OffDiagData;
+				OffDiagData = nullptr;
+			}
+			if(NumEntriesOfRaw)
+			{
+				delete[] NumEntriesOfRaw;
+				NumEntriesOfRaw = nullptr;
+			}
+			if (ColIndexAtRaw)
+			{
+				delete[] ColIndexAtRaw;
+				ColIndexAtRaw = nullptr;
+			}
 		}
-		return FRTBBSSMatrixRaw(this, I);
 	}
 	
 	virtual ~FRTBBSSMatrix()
 	{
 		delete[] DiagData;
-		if (Compressed)
-		{
-			delete[] OffDiagData;
-			delete[] NumEntriesOfRaw;
-			delete[] ColIndexAtRaw;
-			OffDiagData = nullptr;
-			NumEntriesOfRaw = nullptr;
-			ColIndexAtRaw = nullptr;
-		}
+		ReleaseCompressedData();
 	}
 
 	void MakeCompressed()

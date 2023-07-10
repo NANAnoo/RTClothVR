@@ -22,30 +22,26 @@ public:
 	{
 	}
 private:
-		virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2) override;
-		
-		// energy condition:
-		float C0 = 0, C1 = 0;
+	virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2) override;
+	
+	// energy condition:
+	float C0 = 0, C1 = 0;
 
-		// resting U V
-		float RestU, RestV;
-	
-		// time derivatives of energy condition:
-		float dC0dt = 0, dC1dt = 0;
-	
-		// derivatives of the energy conditions:
-		FVector dC0dP0, dC0dP1, dC0dP2;
-		FVector dC1dP0, dC1dP1, dC1dP2;
-	
-		// second derivatives of the energy conditions:
-		FRTMatrix3 d2C0dP0dP0, d2C0dP0dP1, d2C0dP0dP2;
-		FRTMatrix3 d2C0dP1dP0, d2C0dP1dP1, d2C0dP1dP2;
-		FRTMatrix3 d2C0dP2dP0, d2C0dP2dP1, d2C0dP2dP2;
-	
-		FRTMatrix3 d2C1dP0dP0, d2C1dP0dP1, d2C1dP0dP2;
-		FRTMatrix3 d2C1dP1dP0, d2C1dP1dP1, d2C1dP1dP2;
-		FRTMatrix3 d2C1dP2dP0, d2C1dP2dP1, d2C1dP2dP2;
+	// resting U V
+	float RestU, RestV;
+
+	// time derivatives of energy condition:
+	float dC0dt = 0, dC1dt = 0;
+
+	// derivatives of the energy conditions:
+	FVector dC0dX[3];
+	FVector dC1dX[3];
+
+	// second derivatives of the energy conditions:
+	FRTMatrix3 d2C0dXX[3][3];
+
+	FRTMatrix3 d2C1dXX[3][3];
 	//FTriangleProperties TriProp;
 	// vertex indices
-	uint32 V_Inx[3];
+	const uint32 V_Inx[3];
 };

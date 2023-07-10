@@ -55,30 +55,28 @@ struct FClothTriangleStaticProperties
 		a = 0.5f * abs(du1 * dv2 - du2 * dv1);
 
 		// first derivatives of uv tangents:
-		dwudP0Scalar = (dv1 - dv2) / (2 * a);
-		dwudP1Scalar = dv2 / (2 * a);
-		dwudP2Scalar = -dv1 / (2 * a);
+		dwudXScalar[0] = (dv1 - dv2) / (2 * a);
+		dwudXScalar[1] = dv2 / (2 * a);
+		dwudXScalar[2] = -dv1 / (2 * a);
 
-		dwvdP0Scalar = (du2 - du1) / (2 * a);
-		dwvdP1Scalar = -du2 / (2 * a);
-		dwvdP2Scalar = du1 / (2 * a);
-		
-		dwudP0 = FRTMatrix3::Diag(dwudP0Scalar);
-		dwudP1 = FRTMatrix3::Diag(dwudP1Scalar);
-		dwudP2 = FRTMatrix3::Diag(dwudP2Scalar);
+		dwvdXScalar[0] = (du2 - du1) / (2 * a);
+		dwvdXScalar[1] = -du2 / (2 * a);
+		dwvdXScalar[2] = du1 / (2 * a);
 
-		dwvdP0 = FRTMatrix3::Diag(dwvdP0Scalar);
-		dwvdP1 = FRTMatrix3::Diag(dwvdP1Scalar);
-		dwvdP2 = FRTMatrix3::Diag(dwvdP2Scalar);
+		for (uint32 i = 0; i < 3; i ++)
+		{
+			dwudX[i] = FRTMatrix3::Diag(dwudXScalar[i]);
+			dwvdX[i] = FRTMatrix3::Diag(dwvdXScalar[i]);
+		}
 	}
 	float du1, dv1, du2, dv2, a;
 	
-	float dwudP0Scalar, dwudP1Scalar, dwudP2Scalar;
-	float dwvdP0Scalar, dwvdP1Scalar, dwvdP2Scalar;
+	float dwudXScalar[3];
+	float dwvdXScalar[3];
 	
 	// partial derivatives of Wu Wv on Three Positions:
-	FRTMatrix3 dwudP0, dwudP1, dwudP2;
-	FRTMatrix3 dwvdP0, dwvdP1, dwvdP2;
+	FRTMatrix3 dwudX[3];
+	FRTMatrix3 dwvdX[3];
 };
 
 // computed only once

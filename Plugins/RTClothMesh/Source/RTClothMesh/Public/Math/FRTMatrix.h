@@ -150,6 +150,12 @@ public:
 		}
 		return Res;
 	}
+
+	FORCEINLINE const static FRTMatrix& Zero()
+	{
+		static FRTMatrix Res;
+		return Res;
+	}
 	
 	FORCEINLINE FRTMatrix operator*(Real Scale) const
 	{
