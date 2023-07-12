@@ -2,6 +2,32 @@
 
 #include "CoreMinimal.h"
 
+// sparse pattern of a matrix
+struct FrtSparsePattern
+{
+	bool operator==(FrtSparsePattern const&Other)
+	{
+		if (Size != Other.Size) return false;
+		if (PreSumNumEntriesOfRaw.Num() != Other.PreSumNumEntriesOfRaw.Num()) return false;
+		if (ColIndexAtEntrance.Num() != Other.ColIndexAtEntrance.Num()) return false;
+		for (int32 i = 0; i < PreSumNumEntriesOfRaw.Num(); i ++)
+		{
+			if (PreSumNumEntriesOfRaw[i] != Other.PreSumNumEntriesOfRaw[i]) return false;
+		}
+		for (int32 i = 0; i < ColIndexAtEntrance.Num(); i ++)
+		{
+			if (ColIndexAtEntrance[i] != Other.ColIndexAtEntrance[i]) return false;
+		}
+		return true;
+	}
+	uint32 Size = 0;
+	// StartIndex[i] = 0 if i == 0 else PreSumNumEntriesOfRaw[i-1]
+	TArray<uint32> PreSumNumEntriesOfRaw;
+	// Same size of OffDiagData, |uint32[NumOfEntriesOfRaw[0]]|uint32[NumOfEntriesOfRaw[1]]
+	// Value is the Col Index
+	TArray<uint32> ColIndexAtEntrance;
+};
+
 // Block Based Square Sparse Matrix
 template <typename BlockType>
 class FRTBBSSMatrix
@@ -13,12 +39,17 @@ public:
 		
 		BlockType& operator[](uint32 const J)
 		{
-			// TODO, check if pattern locked
-			Mat->ReleaseCompressedData();
 			if (J == Raw)
 			{
 				return Mat->DiagData[J];
 			}
+			if (Mat->IsLockPattern)
+			{
+				auto const Eid = Raw * Mat->Pattern.Size + J;
+				check(Mat->IDToCompressedID.Contains(Eid));
+				return Mat->OffDiagData[Eid];
+			}
+			Mat->ReleaseCompressedData();
 			if (!Mat->TempData[Raw].Contains(J))
 			{
 				Mat->TempData[Raw].Add(J, BlockType());
@@ -32,26 +63,32 @@ public:
 			{
 				return Mat->DiagData[J];
 			}
-			if (!Mat->TempData[Raw].Contains(J))
-			{
-				Mat->TempData[Raw].Add(J, BlockType());
-			}
+			check(Mat->TempData[Raw].Contains(J));
 			return Mat->TempData[Raw][J];
 		}
 	private:
 		FRTBBSSMatrix *Mat;
-		int Raw;
+		uint32 Raw;
 	};
-	explicit FRTBBSSMatrix(uint32 const Size) : Size(Size)
+	FRTBBSSMatrix() = default;
+
+	FRTBBSSMatrixRaw operator[](uint32 I) const
 	{
-		DiagData = new BlockType[Size]();
-		TempData.SetNumZeroed(Size);
+		check(I < Pattern.Size);
+		return FRTBBSSMatrixRaw(this, I);
 	}
 
-	FRTBBSSMatrixRaw operator[](uint32 I)
+	void UpdateSize(uint32 N)
 	{
-		check(I < Size);
-		return FRTBBSSMatrixRaw(this, I);
+		Reset();
+		Pattern.Size = N;
+		if (DiagData)
+		{
+		   delete DiagData;
+			DiagData = nullptr;
+		}
+		DiagData = new BlockType[Pattern.Size]();
+		TempData.SetNumZeroed(Pattern.Size);
 	}
 
 	FORCEINLINE void ReleaseCompressedData()
@@ -63,16 +100,10 @@ public:
 				delete[] OffDiagData;
 				OffDiagData = nullptr;
 			}
-			if(NumEntriesOfRaw)
-			{
-				delete[] NumEntriesOfRaw;
-				NumEntriesOfRaw = nullptr;
-			}
-			if (ColIndexAtRaw)
-			{
-				delete[] ColIndexAtRaw;
-				ColIndexAtRaw = nullptr;
-			}
+			Pattern.ColIndexAtEntrance.Empty();
+			Pattern.PreSumNumEntriesOfRaw.Empty();
+			IDToCompressedID.Reset();
+			Compressed = false;
 		}
 	}
 	
@@ -84,71 +115,129 @@ public:
 
 	void MakeCompressed()
 	{
+		ReleaseCompressedData();
 		int NumOfOffDiagEntries = 0;
 		for (auto &Raw : TempData)
 		{
 			NumOfOffDiagEntries += Raw.Num();
 		}
-		NumEntriesOfRaw = new uint32[Size];
-		ColIndexAtRaw = new uint32[NumOfOffDiagEntries]();
+		Pattern.PreSumNumEntriesOfRaw.SetNumZeroed(Pattern.Size);
+		Pattern.ColIndexAtEntrance.SetNumZeroed(NumOfOffDiagEntries);
 		OffDiagData = new BlockType[NumOfOffDiagEntries]();
 
-		int CurrentStartIndex = 0;
-		for (uint32 i = 0; i < Size; i ++)
+		uint32 CurrentStartIndex = 0;
+		for (uint32 i = 0; i < Pattern.Size; i ++)
 		{
 			TMap<uint32, BlockType> &Raw = TempData[i];
-			int NumAtCurRaw = 0;
+			uint32 NumAtCurRaw = 0;
 			// copy data into OffDiagData
-			for (uint32 j = 0; j < Size; j ++)
+			for (uint32 j = 0; j < Pattern.Size; j ++)
 			{
 				if (Raw.Contains(j))
 				{
-					ColIndexAtRaw[CurrentStartIndex + NumAtCurRaw] = j;
-					OffDiagData[CurrentStartIndex + NumAtCurRaw] = Raw[j];
+					auto const Eid = CurrentStartIndex + NumAtCurRaw;
+					IDToCompressedID.Add(i * Pattern.Size + j, Eid);
+					Pattern.ColIndexAtEntrance[Eid] = j;
+					OffDiagData[Eid] = Raw[j];
 					NumAtCurRaw ++;
 				}
 			}
 			check(NumAtCurRaw == Raw.Num());
-			CurrentStartIndex = Raw.Num();
-			NumEntriesOfRaw[i] = CurrentStartIndex;
+			CurrentStartIndex += Raw.Num();
+			Pattern.PreSumNumEntriesOfRaw[i] = CurrentStartIndex;
 		}
+		TempData.SetNumZeroed(Pattern.Size);
 		Compressed = true;
 	}
 
-	// TODO, Lock Pattern
-	
-	void MulVector(BlockType const* InData, BlockType *OutData, uint32 const Len)
+	// Check if two sparse matrix has same pattern
+	bool HasSamePattern(FRTBBSSMatrix const&Other)
 	{
-		check(Compressed && Len == Size);
+		return Pattern == Other.Pattern;
+	}
+
+	// Lock the sparse pattern,
+	// Then the element update will happen in place
+	void LockPattern()
+	{
+		if (!IsLockPattern)
+		{
+			IsLockPattern = true;
+			MakeCompressed();
+		}
+	}
+
+	uint32 Size() const
+	{
+		return Pattern.Size;
+	}
+
+	void Reset()
+	{
+		IsLockPattern = false;
+		ReleaseCompressedData();
+		TempData.SetNumZeroed(Pattern.Size);
+	}
+
+	// Calculation under Compressed State
+	void MulVector(BlockType *OutData, BlockType const* InData, uint32 const Len) const
+	{
+		check(Compressed && Len == Pattern.Size);
 		if (OutData == nullptr)
 		{
 			OutData = new BlockType[Len]();
 		}
 
 		// Sparse x Vector
-		for (uint32 I = 0; I < Size; I ++)
+		for (uint32 I = 0; I < Pattern.Size; I ++)
 		{
-			uint32 const StartIndex = I == 0 ? 0 : NumEntriesOfRaw[I - 1];
-			uint32 const NumOfEntries = NumEntriesOfRaw[I];
+			uint32 const StartIndex = I == 0 ? 0 : Pattern.PreSumNumEntriesOfRaw[I - 1];
+			uint32 const EndIndex = Pattern.PreSumNumEntriesOfRaw[I];
 			OutData[I] = DiagData[I] * InData[I];
-			for (uint32 E = 0; E < NumOfEntries; E ++)
+			for (uint32 E = StartIndex; E < EndIndex; E ++)
 			{
-				uint32 const J = ColIndexAtRaw[StartIndex + E];
+				uint32 const J = Pattern.ColIndexAtEntrance[E];
 				if (J != I)
-					OutData[I] += OffDiagData[StartIndex + E] * InData[J];
+					OutData[I] += OffDiagData[E] * InData[J];
 			}
 		}
+	}
+
+	
+	template <typename Operation>
+	// Apply Operation with another matrix that has same pattern
+	bool Execute(FRTBBSSMatrix & OutMat, FRTBBSSMatrix const& InMat)
+	{
+		if (!HasSamePattern(InMat) || !HasSamePattern(OutMat)) return false;
+		for (uint32 i = 0; i < Pattern.Size; i++)
+		{
+			OutMat.DiagData[i] = Operation(DiagData[i], InMat.DiagData[i]);
+		}
+		for (uint32 i = 0; i < Pattern.PreSumNumEntriesOfRaw.Last(); i ++)
+		{
+			OutMat.OffDiagData[i] = Operation(OffDiagData[i], InMat.OffDiagData[i]);
+		}
+		return true;
+	}
+	
+	static FRTBBSSMatrix MatrixFromOtherPattern(FRTBBSSMatrix const& Other)
+	{
+		FRTBBSSMatrix Res;
+		Res.Compressed = true;
+		Res.IsLockPattern = true;
+		Res.IDToCompressedID = Other.IDToCompressedID;
+		Res.Pattern = Other.Pattern;
+		Res.DiagData = new BlockType[Res.Pattern.Size]();
+		Res.OffDiagData = new BlockType[Res.Pattern.PreSumNumEntriesOfRaw.Last()]();
+		return Res;
 	}
 	
 private:
 	bool Compressed = false;
+	bool IsLockPattern = false;
 	TArray<TMap<uint32, BlockType>> TempData;
-	uint32 Size;
-	// StartIndex[i] = 0 if i == 0 else NumEntriesOfRaw[i-1]
-	uint32 *NumEntriesOfRaw = nullptr;
-	// Same size of OffDiagData, |uint32[NumOfEntriesOfRaw[0]]|uint32[NumOfEntriesOfRaw[1]]
-	// Value is the Col Index
-	uint32 *ColIndexAtRaw = nullptr;
+	TMap<uint32, uint32> IDToCompressedID;
+	FrtSparsePattern Pattern;
 	BlockType *OffDiagData = nullptr;
 	BlockType *DiagData = nullptr;
 };

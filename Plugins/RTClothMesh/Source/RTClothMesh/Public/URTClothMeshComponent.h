@@ -3,6 +3,7 @@
 #include <memory>
 
 #include "RTClothStructures.h"
+#include "FRTClothSystem.h"
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
@@ -37,5 +38,6 @@ private:
 	// Render Data Pass Through
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
-	std::unique_ptr<FClothRawMesh> ClothMesh;
+	std::shared_ptr<FClothRawMesh> ClothMesh;
+	std::unique_ptr<FRTClothSystem> ClothSystem;
 };

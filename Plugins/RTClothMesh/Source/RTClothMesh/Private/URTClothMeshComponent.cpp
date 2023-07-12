@@ -17,8 +17,6 @@
 
 #include <Engine/Engine.h>
 
-#include <FRTStretchCondition.h>
-
 // data pack
 struct FClothMeshPackedData
 {
@@ -30,7 +28,7 @@ struct FClothMeshPackedData
 class FClothMeshSceneProxy : public FPrimitiveSceneProxy
 {
 public:
-	FClothMeshSceneProxy(URTClothMeshComponent const* Component, std::unique_ptr<FClothRawMesh> const& ClothMesh) :
+	FClothMeshSceneProxy(URTClothMeshComponent const* Component, std::shared_ptr<FClothRawMesh> const& ClothMesh) :
 	FPrimitiveSceneProxy(Component),
 	Material(Component->GetMaterial(0)),
 	VertexFactory(GetScene().GetFeatureLevel(), "FClothMeshVertexFactory"),
@@ -105,7 +103,6 @@ public:
 		{
 			if (VisibilityMap & (1 << ViewIndex))
 			{
-				const FSceneView* View = Views[ViewIndex];
 				// Draw the mesh.
 				FMeshBatch& Mesh = Collector.AllocateMesh();
 				FMeshBatchElement& BatchElement = Mesh.Elements[0];
@@ -242,7 +239,7 @@ void URTClothMeshComponent::OnRegister()
 			const auto& CVB = LODResource.VertexBuffers.ColorVertexBuffer;
 			const auto& IB = LODResource.IndexBuffer;
 			// build up our mesh
-			ClothMesh = std::make_unique<FClothRawMesh>();
+			ClothMesh = std::make_shared<FClothRawMesh>();
 			// get vertex data
 			auto const NumVertex = VB.GetNumVertices();
 			const bool HasColor = CVB.IsInitialized() && CVB.GetNumVertices() == NumVertex;
@@ -275,6 +272,9 @@ void URTClothMeshComponent::OnRegister()
 			}
 		}
 	}
+	// setup cloth solver system
+	ClothSystem = std::make_unique<FRTClothSystem>();
+	ClothSystem->Init(ClothMesh, {1, 1, 1, 1, 1, 1, 1});
 	MarkRenderDynamicDataDirty();
 }
 

@@ -104,3 +104,5 @@ public:
 		wvNorm = wv.Size();
 	}
 };
+
+

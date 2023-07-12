@@ -6,7 +6,7 @@
 class FRTBendCondition : public FRTEnergyCondition
 {
 public:
-	FRTBendCondition(FClothRawMesh *const Mesh, uint32 P0, uint32 P1, uint32 P2, uint32 P3) :
+	FRTBendCondition(uint32 P0, uint32 P1, uint32 P2, uint32 P3) :
 	V_idx{P0, P1, P2, P3}
 	{
 		
