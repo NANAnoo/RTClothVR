@@ -1,5 +1,7 @@
 ﻿#include "URTClothMeshComponent.h"
 
+#include "ModifiedCGSolver.h"
+
 #include <RenderingThread.h>
 #include <RenderResource.h>
 
@@ -274,7 +276,11 @@ void URTClothMeshComponent::OnRegister()
 	}
 	// setup cloth solver system
 	ClothSystem = std::make_unique<FRTClothSystem>();
-	ClothSystem->Init(ClothMesh, {1, 1, 1, 1, 1, 1, 1});
+	ClothSystem->Init(ClothMesh,
+		{1, 1, 1, 1, 1, 1, 1},
+		std::make_shared<FModifiedCGSolver>()
+		);
+	ClothSystem->AddConstraint(0, {});
 	MarkRenderDynamicDataDirty();
 }
 
@@ -290,7 +296,12 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 		// update attached transform, TODO : external force here
 		ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
 	}
-	// TODO : notify solver
+	ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
+	[this, DeltaTime](FRHICommandListImmediate &CmdList)
+	{
+		ClothSystem->TickOnce(DeltaTime);
+	});
+	
 	// Need to send new data to render thread
 	MarkRenderDynamicDataDirty();
 	UpdateComponentToWorld();
@@ -323,11 +334,6 @@ void URTClothMeshComponent::SendRenderDynamicData_Concurrent()
 {
 	if (SceneProxy)
 	{
-		// TODO : Acquire data from solver
-		for (auto &pos :ClothMesh->Positions)
-		{
-			pos.Z ++;
-		}
 		ENQUEUE_RENDER_COMMAND(URTClothMeshComponentUpdate)(
 			[this](FRHICommandListImmediate &CmdList)
 			{

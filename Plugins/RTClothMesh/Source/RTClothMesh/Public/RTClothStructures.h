@@ -105,4 +105,32 @@ public:
 	}
 };
 
+struct FClothConstraint
+{
+	enum ELockingType
+	{
+		ConstraintOnPlane, // Locking P
+		ConstraintOnLine, // Locking Q
+		Fixed
+	};
+	// Locked Degree
+	ELockingType LockingDegree = Fixed;
+	FVector P;
+	FVector Q;
+	
+	FRTMatrix3 ConstraintsMat() const
+	{
+		switch (LockingDegree)
+		{
+		case ConstraintOnPlane:
+			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P, P);
+		case ConstraintOnLine:
+			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P, P) - FRTMatrix3::CrossVec(Q, Q);
+		case Fixed:
+		default:
+			return FRTMatrix3::Zero();
+		}
+	}
+};
+
 
