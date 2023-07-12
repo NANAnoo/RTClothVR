@@ -10,5 +10,12 @@ public class RTClothVRTarget : TargetRules
 		Type = TargetType.Game;
 		DefaultBuildSettings = BuildSettingsVersion.V2;
 		ExtraModuleNames.AddRange( new string[] { "RTClothVR" } );
+		
+		if (UnrealTargetPlatform.Mac !=Target.Platform )
+		{
+			return;
+		}
+		bOverrideBuildEnvironment = true;
+		AdditionalCompilerArguments = " -Wno-bitwise-instead-of-logical -Wno-unused-but-set-variable";
 	}
 }
