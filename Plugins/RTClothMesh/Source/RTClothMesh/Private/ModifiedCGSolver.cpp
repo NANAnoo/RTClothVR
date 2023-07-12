@@ -2,14 +2,14 @@
 
 void FModifiedCGSolver::Init(FRTBBSSMatrix<float> const&Mat)
 {
-	P.SetNumUninitialized(Mat.Size());
-	R.SetNumUninitialized(Mat.Size());
-	C.SetNumUninitialized(Mat.Size());
-	S.SetNumUninitialized(Mat.Size());
-	Q.SetNumUninitialized(Mat.Size());
+	P.SetNumZeroed(Mat.Size());
+	R.SetNumZeroed(Mat.Size());
+	C.SetNumZeroed(Mat.Size());
+	S.SetNumZeroed(Mat.Size());
+	Q.SetNumZeroed(Mat.Size());
 }
 
-void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> const& A, TArray<float> const& B, TArray<float> &X)
+void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, TArray<float> &X)
 {
 	// setup precondition
 	for (int32 i = 0; i < P.Num(); i ++)
@@ -29,7 +29,9 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> const& A, TArray<float> const
 	// calculate delta0
 	// δ0 = filter(b)TP filter(b)
 	// C = filter(b)
-	Filter(B, C);
+	for (uint32 i = 0; i < Size; i ++)
+		C[i] = B[i];
+	Filter(C);
 	// S = P filter(b)
 	Precondition(C, false, S);
 	// delta0 = C.Dot(S)
@@ -41,22 +43,22 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> const& A, TArray<float> const
 	A.MulVector(R.GetData(), X.GetData(), X.Num());
 	for (uint32 i = 0; i < Size; i ++)
 		R[i] = B[i] - R[i];
-	Filter(R, R);
+	Filter(R);
 
 	// c = filter(P−1r)
 	Precondition(R, true, C);
-	Filter(C, C);
+	Filter(C);
 
 	// δ_new = rT c
 	float Delta_new = 0;
 	for (uint32 i = 0; i < Size; i ++)
 		Delta_new += C[i] * R[i];
-
+	UE_LOG(LogTemp, Warning, TEXT("delta %f, %f"), Delta_new, Delta_0);
 	for (uint32 I = 0;Delta_new > Tolerance * Tolerance * Delta_0 && I < MaxIterations; I ++)
 	{
 		// q = filter(Ac)
 		A.MulVector(Q.GetData(), C.GetData(), C.Num());
-		Filter(Q, Q);
+		Filter(Q);
 
 		// α = δnew/(cT q)
 		float Alpha = 0;
@@ -86,7 +88,7 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> const& A, TArray<float> const
 		for (uint32 i = 0; i < Size; i ++)
 			C[i] = S[i] + Delta_old * C[i];
 
-		Filter(C, C);
+		Filter(C);
 	}
 }
 
@@ -103,12 +105,12 @@ void FModifiedCGSolver::Precondition(TArray<float> const&In, bool Inverse, TArra
 	}
 }
 
-void FModifiedCGSolver::Filter(TArray<float> const&In, TArray<float> &Out)
+void FModifiedCGSolver::Filter(TArray<float> &Out)
 {
 	for (int32 i = 0; i < ConstraintIds.Num(); i ++)
 	{
 		uint32 const idx  = ConstraintIds[i];
-		auto res = ConstraintMats[i] * FVector(In[3 * idx], In[3 * idx + 1], In[3 * idx + 2]);
+		auto res = ConstraintMats[i] * FVector(Out[3 * idx], Out[3 * idx + 1], Out[3 * idx + 2]);
 		Out[3 * idx] = res[0];
 		Out[3 * idx + 1] = res[1];
 		Out[3 * idx + 2] = res[2];

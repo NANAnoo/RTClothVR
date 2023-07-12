@@ -72,7 +72,7 @@ public:
 	};
 	FRTBBSSMatrix() = default;
 
-	FRTBBSSMatrixRaw operator[](uint32 I) const
+	FRTBBSSMatrixRaw operator[](uint32 I)
 	{
 		check(I < Pattern.Size);
 		return FRTBBSSMatrixRaw(this, I);
@@ -202,20 +202,20 @@ public:
 			}
 		}
 	}
-
 	
-	template <typename Operation>
 	// Apply Operation with another matrix that has same pattern
-	bool Execute(FRTBBSSMatrix & OutMat, FRTBBSSMatrix const& InMat)
+	bool Execute(FRTBBSSMatrix & OutMat, FRTBBSSMatrix const& InMat,
+		TFunction<float(int32, float, float)> const& Diag,
+		TFunction<float(float, float)> const& OffDiag)
 	{
 		if (!HasSamePattern(InMat) || !HasSamePattern(OutMat)) return false;
 		for (uint32 i = 0; i < Pattern.Size; i++)
 		{
-			OutMat.DiagData[i] = Operation(DiagData[i], InMat.DiagData[i]);
+			OutMat.DiagData[i] = Diag(i, DiagData[i], InMat.DiagData[i]);
 		}
 		for (uint32 i = 0; i < Pattern.PreSumNumEntriesOfRaw.Last(); i ++)
 		{
-			OutMat.OffDiagData[i] = Operation(OffDiagData[i], InMat.OffDiagData[i]);
+			OutMat.OffDiagData[i] = OffDiag(OffDiagData[i], InMat.OffDiagData[i]);
 		}
 		return true;
 	}

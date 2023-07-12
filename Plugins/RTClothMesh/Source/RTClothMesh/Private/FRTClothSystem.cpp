@@ -18,7 +18,7 @@ void FRTClothSystem::Init (
 void FRTClothSystem::UpdateMaterial(FRTClothPhysicalMaterial<float> const& M)
 {
     M_Material = M;
-    IsFirstFrame = false;
+    IsFirstFrame = true;
 }
 
 void FRTClothSystem::UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
@@ -29,8 +29,9 @@ void FRTClothSystem::UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 
 void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 {
-    IsFirstFrame = false;
+    IsFirstFrame = true;
 	Mesh = AMesh;
+    Masses.SetNumZeroed(Mesh->Positions.Num());
 	MakeDirectedEdgeModel();
     // setup shear and stretch conditions
     ShearConditions.Reserve(this->Mesh->Indices.Num() / 3);
@@ -61,9 +62,13 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
         {
             VisitedFaces.Add(NextFace);
             auto const F = getFaceAt(NextFace);
+            FVector E01 = Mesh->Positions[F.vertex_index[1]] - Mesh->Positions[F.vertex_index[0]];
+            FVector E02 = Mesh->Positions[F.vertex_index[2]] - Mesh->Positions[F.vertex_index[0]];
+            float Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
             for (uint32 i = 0; i < 3; i ++)
             {
                 auto const VID = F.vertex_index[i];
+                Masses[VID] += Mass / 3;
                 HalfEdgeRef const Edge = firstDirectedHalfEdgeOnVertex(VID);
                 HalfEdgeRef const OtherE = otherHalfEdge(Edge);
                 if (OtherE != UNKNOWN_HALF_EDGE)
@@ -86,28 +91,33 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 
 void FRTClothSystem::TickOnce(float Duration)
 {
-    if (IsFirstFrame)
+    if (!IsFirstFrame)
     {
         ForcesAndDerivatives();
     }
+    IsFirstFrame = false;
     // build up equation for solver, A x = b
-    // A = -dfdx * dt * dt - dfdv * dt;
+    // A = M -dfdx * dt * dt - dfdv * dt;
     // b = f * dt + dfdx * v * dt * dt;
-    struct A_Assembler
-    {
-        float operator()(float const &A, float const &B) const
-        {
-            return - (A * Duration + B) * Duration;
-        }
-    };
-    Df_Dx.Execute<A_Assembler>(A, Df_Dv);
-    Df_Dx.MulVector(B.GetData(), (float *)Velocity.GetData(), Velocity.Num());
+    Df_Dx.Execute(A, Df_Dv,
+        [this, Duration](int32 Id, float A, float B) {return this->Masses[Id / 3] - (A * Duration + B) * Duration;},
+        [Duration](float A, float B) {return - (A * Duration + B) * Duration;});
+    
+    Df_Dx.MulVector(B.GetData(), (float *)Velocity.GetData(), Velocity.Num() * 3);
     for (int32 i = 0; i < Forces.Num(); i ++)
     {
         B[3 * i] = (B[3 * i] * Duration + Forces[i][0]) * Duration;
         B[3 * i + 1] = (B[3 * i + 1] * Duration + Forces[i][0]) * Duration;
         B[3 * i + 2] = (B[3 * i + 2] * Duration + Forces[i][0]) * Duration;
     }
+    // load constraints
+    TArray<uint32> ConsIds;
+    Constraints.GetKeys(ConsIds);
+    TArray<FRTMatrix3> ConsMats;
+    ConsMats.Reserve(ConsIds.Num());
+    for (auto const Id : ConsIds)
+        ConsMats.Add(Constraints[Id]);
+    Solver->UpdateConstraints(ConsIds, ConsMats);
     // solve equation
     TArray<float> dV;
     dV.SetNumZeroed(Velocity.Num() * 3);

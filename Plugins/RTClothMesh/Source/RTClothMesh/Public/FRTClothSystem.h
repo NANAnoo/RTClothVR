@@ -42,8 +42,14 @@ public:
 		std::shared_ptr<IRTClothSolver<float>> const& ASolver
 	);
 
-	// TODO: set up constraints
-	// void UpdateConstrains(std::vector<IConstrains *> const& Constrains);
+	void AddConstraint(uint32 Id, FClothConstraint const& Constraint)
+	{
+		Constraints.Add(Id, Constraint.ConstraintsMat());
+	}
+	void RemoveConstraint(uint32 Id)
+	{
+		Constraints.Remove(Id);
+	}
 
 	// TODO: set up Collision bodies
 	// void AddCollider();
@@ -175,6 +181,7 @@ private:
 	TArray<FRTBendCondition> BendConditions;
 
 	// forces and derivatives
+	TArray<float> Masses;
 	TArray<FVector> Forces;
 	TArray<FVector> DampingForces;
 	FRTBBSSMatrix<float> Df_Dx;
@@ -191,5 +198,6 @@ private:
 	// check if it's fist frame of the incoming mesh
 	bool IsFirstFrame = false;
 
-	// TODO Constraints
+	// Constraints
+	TMap<uint32, FRTMatrix3> Constraints;
 };
