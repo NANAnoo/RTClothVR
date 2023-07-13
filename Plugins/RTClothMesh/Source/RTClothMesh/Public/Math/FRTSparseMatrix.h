@@ -47,7 +47,7 @@ public:
 			{
 				auto const Eid = Raw * Mat->Pattern.Size + J;
 				check(Mat->IDToCompressedID.Contains(Eid));
-				return Mat->OffDiagData[Eid];
+				return Mat->OffDiagData[Mat->IDToCompressedID[Eid]];
 			}
 			Mat->ReleaseCompressedData();
 			if (!Mat->TempData[Raw].Contains(J))
@@ -80,14 +80,10 @@ public:
 
 	void UpdateSize(uint32 N)
 	{
-		Reset();
+		IsLockPattern = false;
+		ReleaseCompressedData();
 		Pattern.Size = N;
-		if (DiagData)
-		{
-		   delete DiagData;
-			DiagData = nullptr;
-		}
-		DiagData = new BlockType[Pattern.Size]();
+		DiagData.SetNumZeroed(Pattern.Size);
 		TempData.SetNumZeroed(Pattern.Size);
 	}
 
@@ -95,11 +91,7 @@ public:
 	{
 		if (Compressed)
 		{
-			if (OffDiagData)
-			{
-				delete[] OffDiagData;
-				OffDiagData = nullptr;
-			}
+			OffDiagData.Empty();
 			Pattern.ColIndexAtEntrance.Empty();
 			Pattern.PreSumNumEntriesOfRaw.Empty();
 			IDToCompressedID.Reset();
@@ -109,8 +101,6 @@ public:
 	
 	virtual ~FRTBBSSMatrix()
 	{
-		delete[] DiagData;
-		ReleaseCompressedData();
 	}
 
 	void MakeCompressed()
@@ -123,7 +113,7 @@ public:
 		}
 		Pattern.PreSumNumEntriesOfRaw.SetNumZeroed(Pattern.Size);
 		Pattern.ColIndexAtEntrance.SetNumZeroed(NumOfOffDiagEntries);
-		OffDiagData = new BlockType[NumOfOffDiagEntries]();
+		OffDiagData.SetNumZeroed(NumOfOffDiagEntries);
 
 		uint32 CurrentStartIndex = 0;
 		for (uint32 i = 0; i < Pattern.Size; i ++)
@@ -172,22 +162,11 @@ public:
 		return Pattern.Size;
 	}
 
-	void Reset()
-	{
-		IsLockPattern = false;
-		ReleaseCompressedData();
-		TempData.SetNumZeroed(Pattern.Size);
-	}
-
 	// Calculation under Compressed State
 	void MulVector(BlockType *OutData, BlockType const* InData, uint32 const Len) const
 	{
-		check(Compressed && Len == Pattern.Size);
-		if (OutData == nullptr)
-		{
-			OutData = new BlockType[Len]();
-		}
-
+		check(Compressed && Len == Pattern.Size && OutData != nullptr);
+		
 		// Sparse x Vector
 		for (uint32 I = 0; I < Pattern.Size; I ++)
 		{
@@ -227,8 +206,8 @@ public:
 		Res.IsLockPattern = true;
 		Res.IDToCompressedID = Other.IDToCompressedID;
 		Res.Pattern = Other.Pattern;
-		Res.DiagData = new BlockType[Res.Pattern.Size]();
-		Res.OffDiagData = new BlockType[Res.Pattern.PreSumNumEntriesOfRaw.Last()]();
+		Res.DiagData.SetNumZeroed(Res.Pattern.Size);
+		Res.OffDiagData.SetNumZeroed(Res.Pattern.PreSumNumEntriesOfRaw.Last());
 		return Res;
 	}
 	
@@ -238,7 +217,7 @@ private:
 	TArray<TMap<uint32, BlockType>> TempData;
 	TMap<uint32, uint32> IDToCompressedID;
 	FrtSparsePattern Pattern;
-	BlockType *OffDiagData = nullptr;
-	BlockType *DiagData = nullptr;
+	TArray<BlockType> OffDiagData;
+	TArray<BlockType> DiagData;
 };
 

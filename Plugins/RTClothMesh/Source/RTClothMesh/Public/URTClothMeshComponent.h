@@ -39,5 +39,5 @@ private:
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
 	std::shared_ptr<FClothRawMesh> ClothMesh;
-	std::unique_ptr<FRTClothSystem> ClothSystem;
+	FRTClothSystem ClothSystem;
 };

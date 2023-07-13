@@ -274,13 +274,12 @@ void URTClothMeshComponent::OnRegister()
 			}
 		}
 	}
-	// setup cloth solver system
-	ClothSystem = std::make_unique<FRTClothSystem>();
-	ClothSystem->Init(ClothMesh,
+	// setup cloth solver system￥
+	ClothSystem.Init(ClothMesh,
 		{1, 1, 1, 1, 1, 1, 1},
 		std::make_shared<FModifiedCGSolver>()
 		);
-	ClothSystem->AddConstraint(0, {});
+	ClothSystem.AddConstraint(0, {});
 	MarkRenderDynamicDataDirty();
 }
 
@@ -299,7 +298,7 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
 	[this, DeltaTime](FRHICommandListImmediate &CmdList)
 	{
-		ClothSystem->TickOnce(DeltaTime);
+		ClothSystem.TickOnce(DeltaTime);
 	});
 	
 	// Need to send new data to render thread

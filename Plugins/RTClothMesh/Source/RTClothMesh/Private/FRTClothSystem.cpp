@@ -8,10 +8,10 @@ void FRTClothSystem::Init (
 	std::shared_ptr<IRTClothSolver<float>> const& ASolver
 )
 {
-	_UpdateMesh(AMesh);
 	UpdateMaterial(Material);
+    _UpdateMesh(AMesh);
     Solver = ASolver;
-    
+    //
     PrepareSimulation();
 }
 
@@ -64,7 +64,7 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
             auto const F = getFaceAt(NextFace);
             FVector E01 = Mesh->Positions[F.vertex_index[1]] - Mesh->Positions[F.vertex_index[0]];
             FVector E02 = Mesh->Positions[F.vertex_index[2]] - Mesh->Positions[F.vertex_index[0]];
-            float Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
+            float const Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
             for (uint32 i = 0; i < 3; i ++)
             {
                 auto const VID = F.vertex_index[i];
@@ -100,8 +100,14 @@ void FRTClothSystem::TickOnce(float Duration)
     // A = M -dfdx * dt * dt - dfdv * dt;
     // b = f * dt + dfdx * v * dt * dt;
     Df_Dx.Execute(A, Df_Dv,
-        [this, Duration](int32 Id, float A, float B) {return this->Masses[Id / 3] - (A * Duration + B) * Duration;},
-        [Duration](float A, float B) {return - (A * Duration + B) * Duration;});
+        [this, Duration](int32 Id, float This_Value, float Other_Value)
+        {
+            return this->Masses[Id / 3] - (This_Value * Duration + Other_Value) * Duration;
+        },
+        [Duration](float This_Value, float Other_Value)
+        {
+            return - (This_Value * Duration + Other_Value) * Duration;
+        });
     
     Df_Dx.MulVector(B.GetData(), (float *)Velocity.GetData(), Velocity.Num() * 3);
     for (int32 i = 0; i < Forces.Num(); i ++)
