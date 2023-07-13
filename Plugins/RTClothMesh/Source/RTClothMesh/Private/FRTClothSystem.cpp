@@ -40,7 +40,7 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
     {
         auto &F = getFaceAt(i);
         ShearConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2]});
-        StretchConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2], 1.f, 1.f});
+        StretchConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2], 100.f, 100.f});
     }
 
     // update masses
@@ -49,9 +49,9 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
         uint32 const V0 = Mesh->Indices[FaceID];
         uint32 const V1 = Mesh->Indices[FaceID + 1];
         uint32 const V2 = Mesh->Indices[FaceID + 2];
-        FVector E01 = Mesh->Positions[V1] - Mesh->Positions[V0];
-        FVector E02 = Mesh->Positions[V2] - Mesh->Positions[V0];
-        float const Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
+        auto E01 = Mesh->TexCoords[V1] - Mesh->TexCoords[V0];
+        auto E02 = Mesh->TexCoords[V2] - Mesh->TexCoords[V0];
+        float const Mass = 0.5 * M_Material.Density * abs(FVector2D::CrossProduct(E01, E02));
         Masses[V0] += Mass / 3;
         Masses[V1] += Mass / 3;
         Masses[V2] += Mass / 3;
@@ -97,44 +97,51 @@ void FRTClothSystem::TickOnce(float Duration)
         UE_LOG(LogTemp, Warning, TEXT("ForcesAndDerivatives: %f"), Timer);
     }
     IsFirstFrame = false;
-    // build up equation for solver, A x = b
-    // A = M -dfdx * dt * dt - dfdv * dt;
-    // b = f * dt + dfdx * v * dt * dt;
-    Df_Dx.Execute(A, Df_Dv,
-        [this, Duration](int32 Id, float This_Value, float Other_Value)
-        {
-            return this->Masses[Id / 3] - (This_Value * Duration + Other_Value) * Duration;
-        },
-        [Duration](float This_Value, float Other_Value)
-        {
-            return - (This_Value * Duration + Other_Value) * Duration;
-        });
-    
-    Df_Dx.MulVector(B.GetData(), (float *)Velocity.GetData(), Velocity.Num() * 3);
-    for (int32 i = 0; i < Forces.Num(); i ++)
-    {
-        B[3 * i] = (B[3 * i] * Duration + Forces[i][0]) * Duration;
-        B[3 * i + 1] = (B[3 * i + 1] * Duration + Forces[i][1]) * Duration;
-        B[3 * i + 2] = (B[3 * i + 2] * Duration + Forces[i][2]) * Duration;
-    }
-    // load constraints
-    TArray<uint32> ConsIds;
-    Constraints.GetKeys(ConsIds);
-    TArray<FRTMatrix3> ConsMats;
-    ConsMats.Reserve(ConsIds.Num());
-    for (auto const Id : ConsIds)
-        ConsMats.Add(Constraints[Id]);
-    Solver->UpdateConstraints(ConsIds, ConsMats);
-    // solve equation
-    TArray<float> dV;
-    dV.SetNumZeroed(Velocity.Num() * 3);
-    Solver->Solve(A, B, dV);
+    // // build up equation for solver, A x = b
+    // // A = M -dfdx * dt * dt - dfdv * dt;
+    // // b = f * dt + dfdx * v * dt * dt;
+    // Df_Dx.Execute(A, Df_Dv,
+    //     [this, Duration](int32 Id, float This_Value, float Other_Value)
+    //     {
+    //         return this->Masses[Id / 3] - (This_Value * Duration + Other_Value) * Duration;
+    //     },
+    //     [Duration](float This_Value, float Other_Value)
+    //     {
+    //         return - (This_Value * Duration + Other_Value) * Duration;
+    //     });
+    //
+    // Df_Dx.MulVector(B.GetData(), (float *)Velocity.GetData(), Velocity.Num() * 3);
+    // for (int32 i = 0; i < Forces.Num(); i ++)
+    // {
+    //     B[3 * i] = (B[3 * i] * Duration + Forces[i][0]) * Duration;
+    //     B[3 * i + 1] = (B[3 * i + 1] * Duration + Forces[i][1]) * Duration;
+    //     B[3 * i + 2] = (B[3 * i + 2] * Duration + Forces[i][2]) * Duration;
+    // }
+    // // load constraints
+    // TArray<uint32> ConsIds;
+    // Constraints.GetKeys(ConsIds);
+    // TArray<FRTMatrix3> ConsMats;
+    // ConsMats.Reserve(ConsIds.Num());
+    // for (auto const Id : ConsIds)
+    //     ConsMats.Add(Constraints[Id]);
+    // Solver->UpdateConstraints(ConsIds, ConsMats);
+    // // solve equation
+    // TArray<float> dV;
+    // dV.SetNumZeroed(Velocity.Num() * 3);
+    // Solver->Solve(A, B, dV);
 
     // update position
     for (int32 i = 0; i < Velocity.Num(); i ++)
     {
-        Velocity[i] += {dV[3 * i], dV[3 * i + 1], dV[3 * i + 2]};
-        Mesh->Positions[i] += Velocity[i];
+        const FVector Acc = Forces[i] / Masses[i];
+        FVector Dv = Acc * Duration * 0.5;
+        if (Constraints.Contains(i))
+        {
+            Dv = Constraints[i] * Dv;
+        }
+        Velocity[i] += Dv;
+        Mesh->Positions[i] += Velocity[i] * Duration;
+        Velocity[i] += Dv;
     }
 }
 
@@ -186,9 +193,9 @@ void FRTClothSystem::MakeDirectedEdgeModel()
 
 void FRTClothSystem::ForcesAndDerivatives()
 {
-    for (auto &F : Forces)
+    for (int32 i = 0; i < Forces.Num(); i ++)
     {
-        F.Set(0, 0, -0.01);
+        Forces[i].Set(0, 0, -10 * Masses[i]);
     }
     for (auto &D : DampingForces)
     {
@@ -202,20 +209,26 @@ void FRTClothSystem::ForcesAndDerivatives()
             , M_Material.K_Stretch, M_Material.D_Stretch, Forces, Df_Dx,
             DampingForces, Df_Dx, Df_Dv);
     }
-    
-    for (auto &Con : ShearConditions)
+    if (M_Material.K_Shear > 0.01)
     {
-        Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
-            , M_Material.K_Shear, M_Material.D_Shear, Forces, Df_Dx,
-            DampingForces, Df_Dx, Df_Dv);
+        for (auto &Con : ShearConditions)
+        {
+            Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
+                , M_Material.K_Shear, M_Material.D_Shear, Forces, Df_Dx,
+                DampingForces, Df_Dx, Df_Dv);
+        }
     }
     
-    for (auto &Con : BendConditions)
+    if (M_Material.K_Bend > 0.01)
     {
-        Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
-            , M_Material.K_Bend, M_Material.D_Bend, Forces, Df_Dx,
-            DampingForces, Df_Dx, Df_Dv);
+        for (auto &Con : BendConditions)
+        {
+            Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
+                , M_Material.K_Bend, M_Material.D_Bend, Forces, Df_Dx,
+                DampingForces, Df_Dx, Df_Dv);
+        }
     }
+    
 }
 
 void FRTClothSystem::PrepareSimulation()

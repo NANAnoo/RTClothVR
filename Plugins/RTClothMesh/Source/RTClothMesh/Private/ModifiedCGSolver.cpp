@@ -84,7 +84,8 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 		Delta_new = 0;
 		// δnew = rT s
 		for (uint32 i = 0; i < Size; i ++)
-			Delta_new += C[i] * R[i];
+			Delta_new += R[i] * S[i];
+		
 		check(!isnan(Delta_new) && !isinf(Delta_new))
 		// c = filter(s + δnew/δold * c)
 		Delta_old = Delta_new / Delta_old;
@@ -95,7 +96,7 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 		UE_LOG(LogTemp, Warning, TEXT("delta %f"), Delta_new);
 	}
 	Timer = (FPlatformTime::Seconds() - Timer) * 1000.0;
-	UE_LOG(LogTemp, Warning, TEXT("Iteration %d, Cost %f (/It)"), I, Timer / (I + 1));
+	UE_LOG(LogTemp, Warning, TEXT("Iterations %d, Final Delta Radio %f, Cost %f (/It)"), I, Delta_new / (Tolerance * Tolerance * Delta_0), Timer / (I + 1));
 }
 
 FModifiedCGSolver::~FModifiedCGSolver()

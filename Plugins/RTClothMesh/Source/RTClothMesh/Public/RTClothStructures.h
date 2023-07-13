@@ -51,17 +51,18 @@ struct FClothTriangleStaticProperties
 		dv1 = duv1[1];
 		du2 = duv2[0];
 		dv2 = duv2[1];
+		d = du1 * dv2 - du2 * dv1;
 		// triangle area in reference pose:
-		a = 0.5f * abs(du1 * dv2 - du2 * dv1);
+		a = 0.5f * abs(d);
 
 		// first derivatives of uv tangents:
-		dwudXScalar[0] = (dv1 - dv2) / (2 * a);
-		dwudXScalar[1] = dv2 / (2 * a);
-		dwudXScalar[2] = -dv1 / (2 * a);
+		dwudXScalar[0] = (dv1 - dv2) / d;
+		dwudXScalar[1] = dv2 / d;
+		dwudXScalar[2] = -dv1 / d;
 
-		dwvdXScalar[0] = (du2 - du1) / (2 * a);
-		dwvdXScalar[1] = -du2 / (2 * a);
-		dwvdXScalar[2] = du1 / (2 * a);
+		dwvdXScalar[0] = (du2 - du1) / d;
+		dwvdXScalar[1] = -du2 / d;
+		dwvdXScalar[2] = du1 / d;
 
 		for (uint32 i = 0; i < 3; i ++)
 		{
@@ -69,7 +70,7 @@ struct FClothTriangleStaticProperties
 			dwvdX[i] = FRTMatrix3::Diag(dwvdXScalar[i]);
 		}
 	}
-	float du1, dv1, du2, dv2, a;
+	float du1, dv1, du2, dv2, a, d;
 	
 	float dwudXScalar[3];
 	float dwvdXScalar[3];
@@ -98,8 +99,8 @@ public:
 	virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2)
 	{
 		// trangle tangents in reference directions:
-		wu = ((P1 - P0) * dv2 - (P2 - P0) * dv1) / (2 * a);
-		wv = (-(P1 - P0) * du2 + (P2 - P0) * du1) / (2 * a);
+		wu = ((P1 - P0) * dv2 - (P2 - P0) * dv1) / d;
+		wv = (-(P1 - P0) * du2 + (P2 - P0) * du1) / d;
 		wuNorm = wu.Size();
 		wvNorm = wv.Size();
 	}

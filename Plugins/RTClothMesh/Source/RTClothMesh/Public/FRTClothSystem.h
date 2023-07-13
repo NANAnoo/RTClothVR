@@ -24,8 +24,8 @@ struct FRTClothPhysicalMaterial
 	Real D_Stretch;
 
 	// for shear condition
-	Real D_Shear;
 	Real K_Shear;
+	Real D_Shear;
 
 	// mass per area for each triangle
 	Real Density;

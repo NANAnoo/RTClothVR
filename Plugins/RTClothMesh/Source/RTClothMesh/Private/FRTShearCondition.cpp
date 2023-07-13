@@ -16,6 +16,7 @@ void FRTShearCondition::ComputeForces(
 	{
 		Forces[V_Inx[i]] -= (K * C) * dCdX[i];
 	}
+	return;
 
 	// compute dfdx
 	FRTMatrix3 dC2dX[3][3], dFdX[3][3];
@@ -24,7 +25,7 @@ void FRTShearCondition::ComputeForces(
 		for (uint32 j = 0; j < 3; j ++)
 		{
 			dC2dX[i][j] = FRTMatrix3::CrossVec(dCdX[i], dCdX[j]);
-			dFdX[i][j] = dC2dX[i][j] + C * d2CdXX[i][j];
+			dFdX[i][j] = - K *(dC2dX[i][j] + C * d2CdXX[i][j]);
 		}
 	}
 	
@@ -37,7 +38,7 @@ void FRTShearCondition::ComputeForces(
 			{
 				for (uint32 n = 0; n < 3; n ++)
 				{
-					dfdx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] += - K * dFdX[m][n][i][j];
+					dfdx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] += dFdX[m][n][i][j];
 				}
 			}
 		}
@@ -46,7 +47,7 @@ void FRTShearCondition::ComputeForces(
 	// fd = -d * dC/dt * dC/dx:
 	for (uint32 i = 0; i < 3; i ++)
 	{
-		Forces[V_Inx[i]] -= (D * dCdt) * dCdX[i];
+		DampingF[V_Inx[i]] -= (D * dCdt) * dCdX[i];
 	}
 
 	// dddv_ij = - d * dCdx_i * dCdx_j
@@ -73,7 +74,7 @@ void FRTShearCondition::ComputeForces(
 			{
 				for (uint32 n = 0; n < 3; n ++)
 				{
-					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] -= D * dCdt * d2CdXX[n][m][i][j];
+					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] -= D * dCdt * d2CdXX[m][n][i][j];
 				}
 			}
 		}

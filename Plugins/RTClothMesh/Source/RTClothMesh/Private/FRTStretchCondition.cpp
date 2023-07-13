@@ -16,6 +16,7 @@ void FRTStretchCondition::ComputeForces(
 	{
 		Forces[V_Inx[i]] -= K * (C0 * dC0dX[i] + C1 * dC1dX[i]);
 	}
+	return;
 
 	// First Derivative of Force, dfdx
 	FRTMatrix3 CPMat[3][3], dfdX[3][3];
@@ -71,7 +72,7 @@ void FRTStretchCondition::ComputeForces(
 	{
 		for (int j = 0; j < 3; ++j)
 		{
-			dDdX[j][i] = d2C0dXX[j][i] * dC0dt + d2C1dXX[j][i] * dC1dt;
+			dDdX[i][j] = d2C0dXX[i][j] * dC0dt + d2C1dXX[i][j] * dC1dt;
 		}
 	}
 	
@@ -84,7 +85,7 @@ void FRTStretchCondition::ComputeForces(
 			{
 				for (uint32 n = 0; n < 3; n ++)
 				{
-					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] += -D * dDdX[n][m][i][j];
+					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] += -D * dDdX[m][n][i][j];
 				}
 			}
 		}

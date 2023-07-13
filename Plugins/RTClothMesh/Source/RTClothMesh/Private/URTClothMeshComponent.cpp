@@ -19,8 +19,6 @@
 
 #include <Engine/Engine.h>
 
-#include "MovieSceneTracksPropertyTypes.h"
-
 // data pack
 struct FClothMeshPackedData
 {
@@ -133,6 +131,7 @@ public:
 				Mesh.Type = PT_TriangleList;
 				Mesh.DepthPriorityGroup = SDPG_World;
 				Mesh.bCanApplyViewModeOverrides = false;
+				Mesh.bDisableBackfaceCulling = true;
 				Collector.AddMesh(ViewIndex, Mesh);
 			}
 		}
@@ -284,10 +283,12 @@ void URTClothMeshComponent::OnRegister()
 	}
 	// setup cloth solver system
 	ClothSystem.Init(ClothMesh,
-		{1, 1, 1, 1, 1, 1, 1},
+		{0, 0, 100, 10, 0.2, 0.05, 1},
 		std::make_shared<FModifiedCGSolver>()
 		);
-	ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
+	//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
+	ClothSystem.AddConstraint(0, {});
+	ClothSystem.AddConstraint(95, {});
 	MarkRenderDynamicDataDirty();
 }
 
@@ -306,7 +307,7 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
 	[this, DeltaTime](FRHICommandListImmediate &CmdList)
 	{
-		ClothSystem.TickOnce(DeltaTime);
+		ClothSystem.TickOnce(0.001);
 	});
 	
 	// Need to send new data to render thread

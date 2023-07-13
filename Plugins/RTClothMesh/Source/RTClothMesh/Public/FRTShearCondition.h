@@ -19,8 +19,9 @@ public:
 		TArray<FVector> &DampingF,  FRTBBSSMatrix<float> &dddx,  FRTBBSSMatrix<float> &dddv
 	) override;
 	
-private:
+
 	virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2) override;
+private:
 	// C condition:
 	float C = 0;
 
