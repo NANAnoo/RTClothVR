@@ -179,7 +179,7 @@ public:
 
 	FORCEINLINE FRTMatrix operator/(Real Scale) const
 	{
-		return *this * Scale;
+		return *this * (Real(1) / Scale);
 	}
 	
 	FORCEINLINE FRTMatrix operator/=(Real Scale) const

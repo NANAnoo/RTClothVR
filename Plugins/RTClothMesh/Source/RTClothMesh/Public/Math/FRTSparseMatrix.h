@@ -198,6 +198,25 @@ public:
 		}
 		return true;
 	}
+
+	// Set zero
+	void SetValues(BlockType Value)
+	{
+		for (auto &d : DiagData) d = Value;
+		if (Compressed)
+		{
+			for (auto &o : OffDiagData) o = Value;
+		} else
+		{
+			for (auto &Raw : TempData)
+			{
+				for (auto &Pair : Raw)
+				{
+					Pair.Value = Value;
+				}
+			}
+		}
+	}
 	
 	static FRTBBSSMatrix MatrixFromOtherPattern(FRTBBSSMatrix const& Other)
 	{

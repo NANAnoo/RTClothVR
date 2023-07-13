@@ -4,7 +4,7 @@
 class FModifiedCGSolver : public IRTClothSolver<float>
 {
 public:
-	FModifiedCGSolver(float Tol = 1e-6, uint32 MaxItNums = 50)
+	FModifiedCGSolver(float Tol = 1e-3, uint32 MaxItNums = 50)
 		: IRTClothSolver(Tol, MaxItNums) {}
 	virtual void Init(FRTBBSSMatrix<float> const&) override;
 	virtual void Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, TArray<float> &X) override;

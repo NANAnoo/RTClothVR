@@ -53,8 +53,10 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 	float Delta_new = 0;
 	for (uint32 i = 0; i < Size; i ++)
 		Delta_new += C[i] * R[i];
-	UE_LOG(LogTemp, Warning, TEXT("delta %f, %f"), Delta_new, Delta_0);
-	for (uint32 I = 0;Delta_new > Tolerance * Tolerance * Delta_0 && I < MaxIterations; I ++)
+	uint32 I = 0;
+	UE_LOG(LogTemp, Warning, TEXT("---------------- New Frame -----------------"));
+	double Timer = FPlatformTime::Seconds();
+	for (;Delta_new > Tolerance * Tolerance * Delta_0 && I < MaxIterations; I ++)
 	{
 		// q = filter(Ac)
 		A.MulVector(Q.GetData(), C.GetData(), C.Num());
@@ -64,6 +66,7 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 		float Alpha = 0;
 		for (uint32 i = 0; i < Size; i ++)
 			Alpha += C[i] * Q[i];
+		check(!isnan(Alpha) && !isinf(Alpha))
 		Alpha = Delta_new / Alpha;
 
 		// X = X + αc
@@ -82,14 +85,17 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 		// δnew = rT s
 		for (uint32 i = 0; i < Size; i ++)
 			Delta_new += C[i] * R[i];
-
+		check(!isnan(Delta_new) && !isinf(Delta_new))
 		// c = filter(s + δnew/δold * c)
 		Delta_old = Delta_new / Delta_old;
 		for (uint32 i = 0; i < Size; i ++)
 			C[i] = S[i] + Delta_old * C[i];
 
 		Filter(C);
+		UE_LOG(LogTemp, Warning, TEXT("delta %f"), Delta_new);
 	}
+	Timer = (FPlatformTime::Seconds() - Timer) * 1000.0;
+	UE_LOG(LogTemp, Warning, TEXT("Iteration %d, Cost %f (/It)"), I, Timer / (I + 1));
 }
 
 FModifiedCGSolver::~FModifiedCGSolver()

@@ -110,7 +110,7 @@ struct FClothConstraint
 	enum ELockingType
 	{
 		ConstraintOnPlane, // Locking P
-		ConstraintOnLine, // Locking Q
+		ConstraintOnLine, // Locking P and Q
 		Fixed
 	};
 	// Locked Degree

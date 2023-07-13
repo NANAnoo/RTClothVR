@@ -42,6 +42,20 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
         ShearConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2]});
         StretchConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2], 1.f, 1.f});
     }
+
+    // update masses
+    for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)
+    {
+        uint32 const V0 = Mesh->Indices[FaceID];
+        uint32 const V1 = Mesh->Indices[FaceID + 1];
+        uint32 const V2 = Mesh->Indices[FaceID + 2];
+        FVector E01 = Mesh->Positions[V1] - Mesh->Positions[V0];
+        FVector E02 = Mesh->Positions[V2] - Mesh->Positions[V0];
+        float const Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
+        Masses[V0] += Mass / 3;
+        Masses[V1] += Mass / 3;
+        Masses[V2] += Mass / 3;
+    }
     
     // set up bend conditions
     uint32 PairNum = 0;
@@ -50,40 +64,24 @@ void FRTClothSystem::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
         PairNum += (E != UNKNOWN_HALF_EDGE);
     }
     BendConditions.Reserve(PairNum / 2);
-    // get all triangle pairs, BFS
-    TSet<uint32> VisitedFaces;
-    VisitedFaces.Reserve(this->Mesh->Indices.Num() / 3);
-    TQueue<uint32> ToVisit;
-    ToVisit.Enqueue(0);
-    while (!ToVisit.IsEmpty())
+
+    TSet<uint32> VisitedEdges;
+    VisitedEdges.Reserve(other_half_of_edge.Num());
+    for (auto const Edge : other_half_of_edge)
     {
-        uint32 NextFace;
-        if (ToVisit.Dequeue(NextFace))
+        
+        if (Edge != UNKNOWN_HALF_EDGE && !VisitedEdges.Contains(Edge))
         {
-            VisitedFaces.Add(NextFace);
-            auto const F = getFaceAt(NextFace);
-            FVector E01 = Mesh->Positions[F.vertex_index[1]] - Mesh->Positions[F.vertex_index[0]];
-            FVector E02 = Mesh->Positions[F.vertex_index[2]] - Mesh->Positions[F.vertex_index[0]];
-            float const Mass = 0.5 * M_Material.Density * FVector::CrossProduct(E01, E02).Size();
-            for (uint32 i = 0; i < 3; i ++)
+            HalfEdgeRef const OtherE = otherHalfEdge(Edge);
+            if (!VisitedEdges.Contains(OtherE))
             {
-                auto const VID = F.vertex_index[i];
-                Masses[VID] += Mass / 3;
-                HalfEdgeRef const Edge = firstDirectedHalfEdgeOnVertex(VID);
-                HalfEdgeRef const OtherE = otherHalfEdge(Edge);
-                if (OtherE != UNKNOWN_HALF_EDGE)
-                {
-                    auto const OtherF = faceIndexOfHalfEdge(OtherE);
-                    if (!VisitedFaces.Contains(OtherF))
-                    {
-                        uint32 const V0 = toVertexIndexOfHalfEdge(nextHalfEdge(Edge));
-                        uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
-                        uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
-                        uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
-                        BendConditions.Add({V0, V1, V2, V3});
-                        ToVisit.Enqueue(OtherF);
-                    }
-                }
+                uint32 const V0 = toVertexIndexOfHalfEdge(nextHalfEdge(Edge));
+                uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
+                uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
+                uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
+                BendConditions.Add({V0, V1, V2, V3});
+                VisitedEdges.Add(Edge);
+                VisitedEdges.Add(OtherE);
             }
         }
     }
@@ -93,7 +91,10 @@ void FRTClothSystem::TickOnce(float Duration)
 {
     if (!IsFirstFrame)
     {
+        auto Timer = FPlatformTime::Seconds();
         ForcesAndDerivatives();
+        Timer = (FPlatformTime::Seconds() - Timer) * 1000.0;
+        UE_LOG(LogTemp, Warning, TEXT("ForcesAndDerivatives: %f"), Timer);
     }
     IsFirstFrame = false;
     // build up equation for solver, A x = b
@@ -113,8 +114,8 @@ void FRTClothSystem::TickOnce(float Duration)
     for (int32 i = 0; i < Forces.Num(); i ++)
     {
         B[3 * i] = (B[3 * i] * Duration + Forces[i][0]) * Duration;
-        B[3 * i + 1] = (B[3 * i + 1] * Duration + Forces[i][0]) * Duration;
-        B[3 * i + 2] = (B[3 * i + 2] * Duration + Forces[i][0]) * Duration;
+        B[3 * i + 1] = (B[3 * i + 1] * Duration + Forces[i][1]) * Duration;
+        B[3 * i + 2] = (B[3 * i + 2] * Duration + Forces[i][2]) * Duration;
     }
     // load constraints
     TArray<uint32> ConsIds;
@@ -185,20 +186,30 @@ void FRTClothSystem::MakeDirectedEdgeModel()
 
 void FRTClothSystem::ForcesAndDerivatives()
 {
+    for (auto &F : Forces)
+    {
+        F.Set(0, 0, -0.01);
+    }
+    for (auto &D : DampingForces)
+    {
+        D.Set(0, 0, 0);
+    }
+    Df_Dx.SetValues(0.f);
+    Df_Dv.SetValues(0.f);
     for (auto &Con : StretchConditions)
     {
         Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
             , M_Material.K_Stretch, M_Material.D_Stretch, Forces, Df_Dx,
             DampingForces, Df_Dx, Df_Dv);
     }
-
+    
     for (auto &Con : ShearConditions)
     {
         Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords
             , M_Material.K_Shear, M_Material.D_Shear, Forces, Df_Dx,
             DampingForces, Df_Dx, Df_Dv);
     }
-
+    
     for (auto &Con : BendConditions)
     {
         Con.ComputeForces(Mesh->Positions, Velocity, Mesh->TexCoords

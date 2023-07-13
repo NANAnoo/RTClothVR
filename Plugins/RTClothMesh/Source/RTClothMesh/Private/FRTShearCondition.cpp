@@ -85,9 +85,15 @@ void FRTShearCondition::Update(
 	const FVector &P0, const FVector &P1, const FVector &P2,
 	const FVector& V0, const FVector& V1, const FVector& V2)
 {
+	FClothTriangleProperties::Update(P0, P1, P2, V0, V1, V2);
 	C = a * (wu | wv);
 
-	dCdt = (dCdX[1]|V1) + (dCdX[1]|V1) + (dCdX[1]|V1);
+	for (uint32 i = 0; i < 3; i ++)
+	{
+		dCdX[i] = a * (dwudXScalar[i] * wv + dwvdXScalar[i] * wu);
+	}
+
+	dCdt = (dCdX[0]|V0) + (dCdX[1]|V1) + (dCdX[2]|V2);
 	
 	for (uint32 i = 0; i < 3; i ++)
 	{

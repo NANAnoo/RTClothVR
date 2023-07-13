@@ -19,6 +19,8 @@
 
 #include <Engine/Engine.h>
 
+#include "MovieSceneTracksPropertyTypes.h"
+
 // data pack
 struct FClothMeshPackedData
 {
@@ -232,9 +234,14 @@ void URTClothMeshComponent::OnRegister()
 	{
 		Components[0]->SetHiddenInGame(true);
 		auto const Mesh = Components[0]->GetStaticMesh();
-		if (Mesh->IsValidLowLevel() && &Mesh->GetSourceModel(0) != nullptr)
+		if (Mesh->IsValidLowLevel() && Mesh->GetRenderData()->LODResources.Num() > 0)
 		{
 			// get the original vertex data
+			auto Mats = Components[0]->GetMaterials();
+			if (Mats.Num() > 0)
+			{
+				SetMaterial(0, Mats[0]);
+			}
 			const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
 			const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
 			const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
@@ -252,10 +259,11 @@ void URTClothMeshComponent::OnRegister()
 			ClothMesh->TangentZArray.Reserve(NumVertex);
 			ClothMesh->Colors.Reserve(NumVertex);
 			ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
+			auto CurT = GetComponentTransform();
 			for (uint32 i = 0; i < NumVertex; i ++)
 			{
-				// position, TODO apply transforms
-				ClothMesh->Positions.Add(VB.VertexPosition(i));
+				// position
+				ClothMesh->Positions.Add( ClothMesh->LocalToWorld.GetScale3D() * VB.VertexPosition(i));
 				// UV
 				ClothMesh->TexCoords.Add(SVB.GetVertexUV(i, 0));
 				// tangent, TODO Check W in tangents X and Z
@@ -274,12 +282,12 @@ void URTClothMeshComponent::OnRegister()
 			}
 		}
 	}
-	// setup cloth solver system￥
+	// setup cloth solver system
 	ClothSystem.Init(ClothMesh,
 		{1, 1, 1, 1, 1, 1, 1},
 		std::make_shared<FModifiedCGSolver>()
 		);
-	ClothSystem.AddConstraint(0, {});
+	ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
 	MarkRenderDynamicDataDirty();
 }
 
@@ -340,7 +348,10 @@ void URTClothMeshComponent::SendRenderDynamicData_Concurrent()
 				Data.Positions = &ClothMesh->Positions;
 				Data.Indices = &ClothMesh->Indices;
 				auto const ProcProxy = static_cast<FClothMeshSceneProxy *>(SceneProxy);
-				ProcProxy->SetDynamicData_RenderThread(&Data);
+				if (ProcProxy)
+				{
+					ProcProxy->SetDynamicData_RenderThread(&Data);
+				}
 			}
 		);
 	}
