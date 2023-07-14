@@ -54,7 +54,7 @@ struct FClothTriangleStaticProperties
 		d = du1 * dv2 - du2 * dv1;
 		// triangle area in reference pose:
 		a = 0.5f * abs(d);
-
+		d = 2 * a;
 		// first derivatives of uv tangents:
 		dwudXScalar[0] = (dv1 - dv2) / d;
 		dwudXScalar[1] = dv2 / d;

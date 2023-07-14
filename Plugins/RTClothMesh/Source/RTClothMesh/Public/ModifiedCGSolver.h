@@ -1,11 +1,11 @@
 ﻿#pragma once
 #include "FRTClothSolver.h"
 
-class FModifiedCGSolver : public IRTClothSolver<float>
+class FModifiedCGSolver : public IRTLinearSolver<float>
 {
 public:
 	FModifiedCGSolver(float Tol = 1e-9, uint32 MaxItNums = 100)
-		: IRTClothSolver(Tol, MaxItNums) {}
+		: IRTLinearSolver(Tol, MaxItNums) {}
 	virtual void Init(FRTBBSSMatrix<float> const&) override;
 	virtual void Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, TArray<float> &X) override;
 	virtual ~FModifiedCGSolver() override;

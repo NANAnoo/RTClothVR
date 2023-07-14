@@ -12,14 +12,22 @@ public:
 	{
 	
 	}
-
-	virtual void ComputeForces(
-		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV, float K, float D,
-		TArray<FVector> &Forces, FRTBBSSMatrix<float> &dfdx,
-		TArray<FVector> &DampingF,  FRTBBSSMatrix<float> &dddx,  FRTBBSSMatrix<float> &dddv
+	
+	virtual void UpdateCondition(
+		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV
 	) override;
 	
-
+	virtual void ComputeForces(
+		 float K, float D,
+		TArray<FVector> &Forces, TArray<FVector> &DampingF
+	) override;
+	
+	virtual void ComputeDerivatives(
+		float K, float D,
+		FRTBBSSMatrix<float> &dfdx,
+		FRTBBSSMatrix<float> &dddx,
+		FRTBBSSMatrix<float> &dddv
+	) override;
 	virtual void Update(const FVector &P0, const FVector &P1, const FVector &P2, const FVector& V0, const FVector& V1, const FVector& V2) override;
 private:
 	// C condition:

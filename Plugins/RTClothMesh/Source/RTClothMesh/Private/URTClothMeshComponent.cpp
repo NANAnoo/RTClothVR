@@ -19,6 +19,8 @@
 
 #include <Engine/Engine.h>
 
+#include "FRTClothSystem.h"
+
 // data pack
 struct FClothMeshPackedData
 {
@@ -225,8 +227,6 @@ URTClothMeshComponent::URTClothMeshComponent(const FObjectInitializer& ObjectIni
 void URTClothMeshComponent::OnRegister()
 {
 	Super::OnRegister();
-	
-	// get static mesh and material
 	TArray<UStaticMeshComponent*> Components;
 	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
 	if (Components.Num() > 0)
@@ -241,55 +241,181 @@ void URTClothMeshComponent::OnRegister()
 			{
 				SetMaterial(0, Mats[0]);
 			}
-			const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
-			const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
-			const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
-			const auto& CVB = LODResource.VertexBuffers.ColorVertexBuffer;
-			const auto& IB = LODResource.IndexBuffer;
 			// build up our mesh
 			ClothMesh = std::make_shared<FClothRawMesh>();
-			// get vertex data
-			auto const NumVertex = VB.GetNumVertices();
-			const bool HasColor = CVB.IsInitialized() && CVB.GetNumVertices() == NumVertex;
-			ClothMesh->Positions.Reserve(NumVertex);
-			ClothMesh->TexCoords.Reserve(NumVertex);
-			ClothMesh->TangentXArray.Reserve(NumVertex);
-			ClothMesh->TangentYArray.Reserve(NumVertex);
-			ClothMesh->TangentZArray.Reserve(NumVertex);
-			ClothMesh->Colors.Reserve(NumVertex);
 			ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
-			auto CurT = GetComponentTransform();
-			for (uint32 i = 0; i < NumVertex; i ++)
-			{
-				// position
-				ClothMesh->Positions.Add( ClothMesh->LocalToWorld.GetScale3D() * VB.VertexPosition(i));
-				// UV
-				ClothMesh->TexCoords.Add(SVB.GetVertexUV(i, 0));
-				// tangent, TODO Check W in tangents X and Z
-				ClothMesh->TangentXArray.Add(SVB.VertexTangentX(i));
-				ClothMesh->TangentYArray.Add(SVB.VertexTangentY(i));
-				ClothMesh->TangentZArray.Add(SVB.VertexTangentZ(i));
-				ClothMesh->Colors.Add(HasColor ? CVB.VertexColor(i) : FColor::Cyan);
+			if (!SetupCloth_CPU(Mesh)) {
+				ENQUEUE_RENDER_COMMAND(URTClothMeshComponent_Setup_Mesh)(
+				[this, Mesh](FRHICommandListImmediate &CmdList)
+				{
+					SetupCloth_RenderThread(Mesh);
+				});
 			}
-			// get index data;
-			auto const &IBData = IB.GetArrayView();
-			auto const NumIndices = IB.GetNumIndices();
-			ClothMesh->Indices.Reserve(NumIndices);
-			for (int32 i = 0; i < NumIndices; i ++)
-			{
-				ClothMesh->Indices.Add(IBData[i]);
-			}
+			FlushRenderingCommands();
+			// setup cloth solver system
+			ClothSystem = std::make_unique<FRTClothSystem>(std::make_shared<FModifiedCGSolver>());
+			ClothSystem->Init(ClothMesh,
+				{1, 0, 200, 10, 0.3, 0.05, 1}
+				);
+			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
+			ClothSystem->AddConstraint(0, {});
+			ClothSystem->AddConstraint(95, {});
+			MarkRenderDynamicDataDirty();
+		}
+	};
+}
+
+bool URTClothMeshComponent::SetupCloth_CPU(UStaticMesh *Mesh) const
+{
+	const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
+	const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
+	const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
+	const auto& IB = LODResource.IndexBuffer;
+	auto const NumVertex = VB.GetNumVertices();
+
+	if ( VB.GetVertexData() != nullptr &&
+		(IB.AccessStream16() != nullptr || IB.AccessStream32() != nullptr) &&
+		SVB.GetTangentData() != nullptr && SVB.GetTexCoordData() != nullptr
+	)
+	{
+		ClothMesh->Positions.Reserve(NumVertex);
+		ClothMesh->TexCoords.Reserve(NumVertex);
+		ClothMesh->TangentXArray.Reserve(NumVertex);
+		ClothMesh->TangentYArray.Reserve(NumVertex);
+		ClothMesh->TangentZArray.Reserve(NumVertex);
+		ClothMesh->Colors.Reserve(NumVertex);
+		for (uint32 i = 0; i < NumVertex; i ++)
+		{
+			// position
+			ClothMesh->Positions.Add( ClothMesh->LocalToWorld.GetScale3D() * VB.VertexPosition(i));
+			// UV
+			ClothMesh->TexCoords.Add(SVB.GetVertexUV(i, 0));
+			// tangent, TODO Check W in tangents X and Z
+			ClothMesh->TangentXArray.Add(SVB.VertexTangentX(i));
+			ClothMesh->TangentYArray.Add(SVB.VertexTangentY(i));
+			ClothMesh->TangentZArray.Add(SVB.VertexTangentZ(i));
+			ClothMesh->Colors.Add(FColor::Cyan);
+		}
+		// get index data;
+		auto const &IBData = IB.GetArrayView();
+		auto const NumIndices = IB.GetNumIndices();
+		ClothMesh->Indices.Reserve(NumIndices);
+		for (int32 i = 0; i < NumIndices; i ++)
+		{
+			ClothMesh->Indices.Add(IBData[i]);
+		}
+		UE_LOG(LogTemp, Warning, TEXT("Building Cloth Mesh on CPU"));
+		return true;
+	}
+	return false;
+}
+
+void URTClothMeshComponent::SetupCloth_RenderThread(UStaticMesh *Mesh) const
+{
+	const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
+	const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
+	const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
+	const auto& IB = LODResource.IndexBuffer;
+	auto const NumVertex = VB.GetNumVertices();
+
+	UE_LOG(LogTemp, Warning, TEXT("Building Cloth Mesh on GPU"));
+	UE_LOG(LogTemp, Warning, TEXT("Vertex CPU Data %p"), VB.GetVertexData());
+	UE_LOG(LogTemp, Warning, TEXT("Vertex Count %d"), NumVertex);
+	UE_LOG(LogTemp, Warning, TEXT("Vertex Status %d"), VB.IsInitialized() && VB.VertexBufferRHI.IsValid());
+	
+	ClothMesh->Positions.SetNumZeroed(NumVertex);
+	ClothMesh->TexCoords.Reserve(NumVertex);
+	ClothMesh->TangentXArray.Reserve(NumVertex);
+	ClothMesh->TangentYArray.Reserve(NumVertex);
+	ClothMesh->TangentZArray.Reserve(NumVertex);
+	ClothMesh->Colors.Reserve(NumVertex);
+	
+	// get index data;
+	auto const NumIndices = IB.GetNumIndices();
+	ClothMesh->Indices.SetNumZeroed(NumIndices);
+	UE_LOG(LogTemp, Warning, TEXT("Indices 16 CPU Data %p"), IB.AccessStream16());
+	UE_LOG(LogTemp, Warning, TEXT("Indices 32 CPU Data %p"), IB.AccessStream32());
+	UE_LOG(LogTemp, Warning, TEXT("Indices Count %d"), NumIndices);
+	UE_LOG(LogTemp, Warning, TEXT("Indices Status %d"), IB.IsInitialized() && IB.IndexBufferRHI.IsValid());
+	// copy from RHI
+	TArray<uint8> IndexRawData;
+	IndexRawData.SetNumZeroed(NumIndices * sizeof(IB.IndexBufferRHI->GetStride()));
+	void const* indexBufferData = RHILockIndexBuffer(IB.IndexBufferRHI, 0, NumIndices * IB.IndexBufferRHI->GetStride(), RLM_ReadOnly);
+	FMemory::Memcpy(IndexRawData.GetData(), indexBufferData, NumIndices * IB.IndexBufferRHI->GetStride());
+	RHIUnlockIndexBuffer(IB.IndexBufferRHI);
+	
+	// copy to cloth mesh
+	for (int32 i = 0; i < NumIndices; i ++)
+	{
+		if (IB.IndexBufferRHI->GetStride() == 2)
+		{
+			ClothMesh->Indices[i] = uint32(((uint16 *)IndexRawData.GetData())[i]);
+		} else
+		{
+			ClothMesh->Indices[i] = ((uint32 *)IndexRawData.GetData())[i];
 		}
 	}
-	// setup cloth solver system
-	ClothSystem.Init(ClothMesh,
-		{0, 0, 100, 10, 0.2, 0.05, 1},
-		std::make_shared<FModifiedCGSolver>()
-		);
-	//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-	ClothSystem.AddConstraint(0, {});
-	ClothSystem.AddConstraint(95, {});
-	MarkRenderDynamicDataDirty();
+	
+	// Position
+	void const* PosBufferData = RHILockVertexBuffer(VB.VertexBufferRHI, 0, NumVertex *  VB.GetStride(), RLM_ReadOnly);
+	FMemory::Memcpy(ClothMesh->Positions.GetData(), PosBufferData, NumVertex * sizeof(FVector));
+	RHIUnlockVertexBuffer(VB.VertexBufferRHI);
+	
+	// UV
+	auto const &UVBuffer = SVB.TexCoordVertexBuffer;
+	struct HalfUV
+	{
+		FFloat16 U;
+		FFloat16 V;
+	};
+	TArray<HalfUV> uvdata;
+	uvdata.SetNumZeroed(NumVertex * SVB.GetNumTexCoords());
+	
+	void const* UVBufferData = RHILockVertexBuffer(UVBuffer.VertexBufferRHI, 0, NumVertex * SVB.GetNumTexCoords() * sizeof(HalfUV), RLM_ReadOnly);
+	FMemory::Memcpy(uvdata.GetData(), UVBufferData, NumVertex * SVB.GetNumTexCoords() * sizeof(HalfUV));
+	RHIUnlockVertexBuffer(UVBuffer.VertexBufferRHI);
+	
+	for (uint32 i = 0; i < NumVertex; i ++)
+	{
+		auto &uv = uvdata[i * SVB.GetNumTexCoords()];
+		ClothMesh->TexCoords.Add({uv.U.GetFloat(), uv.V.GetFloat()});
+	}
+	
+	// tangent
+	auto const &TangBuffer = SVB.TangentsVertexBuffer;
+	struct TangentType
+	{
+		FPackedNormal X;
+		FPackedNormal Z;
+		FVector GetTangentX() const
+		{
+			return X.ToFVector();
+		}
+		FVector4 GetTangentZ() const
+		{
+			return Z.ToFVector4();
+		}
+		FVector GetTangentY() const
+		{
+			FVector  x = X.ToFVector();
+			FVector4 z = Z.ToFVector4();
+			return (FVector(z) ^ x) * z.W;
+		}
+	};
+	TArray<TangentType> PTdata;
+	PTdata.SetNumZeroed(NumVertex);
+	void const* TangBufferData = RHILockVertexBuffer(TangBuffer.VertexBufferRHI, 0, NumVertex * sizeof(TangentType), RLM_ReadOnly);
+	FMemory::Memcpy(PTdata.GetData(), TangBufferData, NumVertex * sizeof(TangentType));
+	RHIUnlockVertexBuffer(TangBuffer.VertexBufferRHI);
+	
+	for (uint32 i = 0; i < NumVertex; i ++)
+	{
+		// tangent
+		ClothMesh->TangentXArray.Add(PTdata[i].GetTangentX());
+		ClothMesh->TangentYArray.Add(PTdata[i].GetTangentY());
+		ClothMesh->TangentZArray.Add(PTdata[i].GetTangentZ());
+		ClothMesh->Colors.Add(FColor::Cyan);
+	}
 }
 
 void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
@@ -307,7 +433,7 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
 	[this, DeltaTime](FRHICommandListImmediate &CmdList)
 	{
-		ClothSystem.TickOnce(0.001);
+		ClothSystem->TickOnce(0.001);
 	});
 	
 	// Need to send new data to render thread

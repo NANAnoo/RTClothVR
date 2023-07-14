@@ -1,0 +1,15 @@
+﻿#include "/Engine/Private/Common.ush"
+
+//--------------------------------------------------------------------------------------
+// Buffers
+//--------------------------------------------------------------------------------------
+RWStructuredBuffer<float3> Positions;         // Point Positions Input Buffer
+
+RWStructuredBuffer<float> times;
+
+[numthreads(256, 1, 1)]
+void MainComputeShader(uint3 ThreadId : SV_DispatchThreadID)
+{
+	// int index = ThreadId.x;
+	
+}

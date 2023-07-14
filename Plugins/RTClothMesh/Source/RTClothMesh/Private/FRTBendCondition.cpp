@@ -1,10 +1,8 @@
 #include "FRTBendCondition.h"
 
-void FRTBendCondition::ComputeForces(
-	TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV, float K, float D,
-	TArray<FVector> &Forces, FRTBBSSMatrix<float> &dfdx,
-	TArray<FVector> &DampingF,  FRTBBSSMatrix<float> &dddx,  FRTBBSSMatrix<float> &dddv
-)
+void FRTBendCondition::UpdateCondition(
+		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV
+	)
 {
 	auto const & X0 = X[V_idx[0]];
 	auto const & X1 = X[V_idx[1]];
@@ -16,12 +14,14 @@ void FRTBendCondition::ComputeForces(
 	auto const & V2 = V[V_idx[2]];
 	auto const & V3 = V[V_idx[3]];
 
+	L = (UV[V_idx[1]] - UV[V_idx[2]]).Size();
+	
 	// get edge vectors
-	auto const E01 = X1 - X0;
-	auto const E02 = X2 - X0;
-	auto const E32 = X2 - X3;
-	auto const E31 = X1 - X3;
-	auto const E21 = X1 - X2;
+	E01 = X1 - X0;
+	E02 = X2 - X0;
+	E32 = X2 - X3;
+	E31 = X1 - X3;
+	E21 = X1 - X2;
 
 	// get normalized edge vectors
 	auto const NE01 = E01 / E01.Size();
@@ -32,47 +32,72 @@ void FRTBendCondition::ComputeForces(
 
 	// Get Cosine Value at each vertex
 	// auto const c00 = NE01 | NE02;
-	auto const c01 = NE01 | NE21;
-	auto const c02 = - (NE02| NE21);
+	c01 = NE01 | NE21;
+	c02 = - (NE02| NE21);
 
 	// auto const c13 = NE31 | NE32;
-	auto const c11 = NE21 | NE31;
-	auto const c12 = -(NE32| NE21);
+	c11 = NE21 | NE31;
+	c12 = -(NE32| NE21);
 
 	// normalized triangle normals:
-	auto n0 = (NE21 ^ NE01); n0.Normalize();
-	auto n1 = (NE32 ^ NE21); n1.Normalize();
+	n0 = (NE21 ^ NE01); n0.Normalize();
+	n1 = (NE32 ^ NE21); n1.Normalize();
 
 	// normalized bi-normals:
-	auto b00 = (NE01 - NE21 * (NE21|NE01));b00.Normalize();
-	auto b01 = (NE02 * (NE02|NE01)-NE01);b01.Normalize();
-	auto b02 = (NE01 * (NE01|NE02)-NE02);b02.Normalize();
+	b00 = (NE01 - NE21 * (NE21|NE01));b00.Normalize();
+	b01 = (NE02 * (NE02|NE01)-NE01);b01.Normalize();
+	b02 = (NE01 * (NE01|NE02)-NE02);b02.Normalize();
 
-	auto b13 = (NE32 - NE21 * (NE21|NE32));b13.Normalize();
-	auto b12 = (NE31 * (NE31|NE32) - NE32);b12.Normalize();
-	auto b11 = (NE32 * (NE32|NE31) - NE31);b11.Normalize();
+	b13 = (NE32 - NE21 * (NE21|NE32));b13.Normalize();
+	b12 = (NE31 * (NE31|NE32) - NE32);b12.Normalize();
+	b11 = (NE32 * (NE32|NE31) - NE31);b11.Normalize();
 
 	// triangle heights at each vertex
-	auto const d00 = b00 | E01;
-	auto const d01 = -(b01 | E21);
-	auto const d02 = -(b02 | E02);
+	d00 = b00 | E01;
+	d01 = -(b01 | E21);
+	d02 = -(b02 | E02);
 
-	auto const d11 = - (b11 | E31);
-	auto const d12 = b12 | E21;
-	auto const d13 = b13 | E31;
+	d11 = - (b11 | E31);
+	d12 = b12 | E21;
+	d13 = b13 | E31;
 
 	// angle between triangles
-	float Theta = atan2(n0 | n1, n1 | b00);
+	Theta = atan2(n0 | n1, n1 | b00);
 
 	// derivatives of theta with respect to the different vertex positions:
-	auto const dTheta_dX0 = -n0 / d00;
-	auto const dTheta_dX1 = c02 * n0 / d01 + c12 * n1 / d11;
-	auto const dTheta_dX2 = c01 * n0 / d02 + c11 * n1 / d12;
-	auto const dTheta_dX3 = -n1 / d13;
+	dTheta_dX0 = -n0 / d00;
+	dTheta_dX1 = c02 * n0 / d01 + c12 * n1 / d11;
+	dTheta_dX2 = c01 * n0 / d02 + c11 * n1 / d12;
+	dTheta_dX3 = -n1 / d13;
 
-	// time derivative of theta:
-	auto const dTheta_dt = (dTheta_dX0 | V0) + (dTheta_dX1 | V1) + (dTheta_dX2 | V2) + (dTheta_dX3 | V3);
+	//  derivatives of theta with time
+	dTheta_dt = (dTheta_dX0 | V0) + (dTheta_dX1 | V1) + (dTheta_dX2 | V2) + (dTheta_dX3 | V3);
+}
+	
+void FRTBendCondition:: ComputeForces(
+	 float K, float D,
+	TArray<FVector> &Forces, TArray<FVector> &DampingF
+) {
+	const float KL = K * L;
+	Forces[V_idx[0]] -= KL * Theta * dTheta_dX0;
+	Forces[V_idx[1]] -= KL * Theta * dTheta_dX1;
+	Forces[V_idx[2]] -= KL * Theta * dTheta_dX2;
+	Forces[V_idx[3]] -= KL * Theta * dTheta_dX3;
 
+	const float DL = D * L;
+	DampingF[V_idx[0]] -= DL * dTheta_dt * dTheta_dX0;
+	DampingF[V_idx[1]] -= DL * dTheta_dt * dTheta_dX1;
+	DampingF[V_idx[2]] -= DL * dTheta_dt * dTheta_dX2;
+	DampingF[V_idx[3]] -= DL * dTheta_dt * dTheta_dX3;
+}
+	
+void FRTBendCondition:: ComputeDerivatives(
+	float K, float D,
+	FRTBBSSMatrix<float> &dfdx,
+	FRTBBSSMatrix<float> &dddx,
+	FRTBBSSMatrix<float> &dddv
+)
+{
 	// derivatives of normal with respect to the different vertex positions:
 	auto const dn0dP0 = FRTMatrix3::CrossVec(b00, n0) / d00;
 	auto const dn0dP1 =  FRTMatrix3::CrossVec(b01, n0) / d01;
@@ -157,20 +182,13 @@ void FRTBendCondition::ComputeForces(
 	const auto d2Theta_dP3dP2 = FRTMatrix3::CrossVec(n1, dd13dP2) / (d13 * d13) - dn1dP2 / d13;
 	const auto d2Theta_dP3dP3 = FRTMatrix3::CrossVec(n1, dd13dP3) / (d13 * d13) - dn1dP3 / d13;
 
-	// get length of uv1-uv2
-	float L = (UV[V_idx[1]] - UV[V_idx[2]]).Size();
-
 	// Compute forces:
 
-	// E = 1/2 C^t C
+	// E = 1/2 C C
 	// dE/dx = theta * dTheta_dX
 	// f = -dE/dx
 	// f = - theta * dTheta_dX
 	const float KL = K * L;
-	Forces[V_idx[0]] -= KL * Theta * dTheta_dX0;
-	Forces[V_idx[1]] -= KL * Theta * dTheta_dX1;
-	Forces[V_idx[2]] -= KL * Theta * dTheta_dX2;
-	Forces[V_idx[3]] -= KL * Theta * dTheta_dX3;
 
 	const auto d2Theta_dX_00 = FRTMatrix3::CrossVec(dTheta_dX0, dTheta_dX0);
 	const auto d2Theta_dX_01 = FRTMatrix3::CrossVec(dTheta_dX0, dTheta_dX1);
@@ -243,11 +261,6 @@ void FRTBendCondition::ComputeForces(
 	// compute damping forces and v derivatives:
 	// fd = -d * dTheta/dt * dTheta/dx:
 	const float DL = D * L;
-	DampingF[V_idx[0]] -= DL * dTheta_dt * dTheta_dX0;
-	DampingF[V_idx[1]] -= DL * dTheta_dt * dTheta_dX1;
-	DampingF[V_idx[2]] -= DL * dTheta_dt * dTheta_dX2;
-	DampingF[V_idx[3]] -= DL * dTheta_dt * dTheta_dX3;
-	
 	for (int i = 0; i < 3; ++i)
 	{
 		for (int j = 0; j < 3; ++j)

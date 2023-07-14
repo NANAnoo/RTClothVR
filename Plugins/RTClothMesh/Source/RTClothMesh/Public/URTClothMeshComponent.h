@@ -3,7 +3,7 @@
 #include <memory>
 
 #include "RTClothStructures.h"
-#include "FRTClothSystem.h"
+#include "FRTClothSystemBase.h"
 
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
@@ -21,7 +21,9 @@ class URTClothMeshComponent : public UMeshComponent
 public:
 
 private:
-	
+	// setup cloth mesh and cloth system in RenderThread
+	bool SetupCloth_CPU(UStaticMesh *OriginalMesh) const;
+	void SetupCloth_RenderThread(UStaticMesh *OriginalMesh) const;
 	// create a scene proxy
 	virtual FPrimitiveSceneProxy *CreateSceneProxy() override;
 
@@ -39,5 +41,5 @@ private:
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
 	std::shared_ptr<FClothRawMesh> ClothMesh;
-	FRTClothSystem ClothSystem;
+	std::unique_ptr<FRTClothSystemBase> ClothSystem;
 };

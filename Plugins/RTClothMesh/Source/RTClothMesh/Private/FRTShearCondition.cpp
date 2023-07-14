@@ -1,14 +1,10 @@
 #include "FRTShearCondition.h"
 
 void FRTShearCondition::ComputeForces(
-		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV, float K, float D,
-		TArray<FVector> &Forces, FRTBBSSMatrix<float> &dfdx,
-		TArray<FVector> &DampingF,  FRTBBSSMatrix<float> &dddx,  FRTBBSSMatrix<float> &dddv
+	float K, float D,
+		TArray<FVector> &Forces, TArray<FVector> &DampingF
 	)
 {
-	// Update triangle properties
-	Update(X[V_Inx[0]], X[V_Inx[1]], X[V_Inx[2]], V[V_Inx[0]], V[V_Inx[1]], V[V_Inx[2]]);
-
 	// Calculate Forces
 	// E = 0.5 * C * C
 	// f = -dE/dx = - C dC/dx
@@ -16,8 +12,21 @@ void FRTShearCondition::ComputeForces(
 	{
 		Forces[V_Inx[i]] -= (K * C) * dCdX[i];
 	}
-	return;
 
+	// fd = -d * dC/dt * dC/dx:
+	for (uint32 i = 0; i < 3; i ++)
+	{
+		DampingF[V_Inx[i]] -= (D * dCdt) * dCdX[i];
+	}
+}
+
+void FRTShearCondition::ComputeDerivatives(
+		float K, float D,
+		FRTBBSSMatrix<float> &dfdx,
+		FRTBBSSMatrix<float> &dddx,
+		FRTBBSSMatrix<float> &dddv
+	)
+{
 	// compute dfdx
 	FRTMatrix3 dC2dX[3][3], dFdX[3][3];
 	for (uint32 i = 0; i < 3; i ++)
@@ -42,12 +51,6 @@ void FRTShearCondition::ComputeForces(
 				}
 			}
 		}
-	}
-
-	// fd = -d * dC/dt * dC/dx:
-	for (uint32 i = 0; i < 3; i ++)
-	{
-		DampingF[V_Inx[i]] -= (D * dCdt) * dCdX[i];
 	}
 
 	// dddv_ij = - d * dCdx_i * dCdx_j
@@ -81,10 +84,17 @@ void FRTShearCondition::ComputeForces(
 	}
 }
 
+void FRTShearCondition::UpdateCondition(
+	TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV
+	)
+{
+	// Update triangle properties
+	Update(X[V_Inx[0]], X[V_Inx[1]], X[V_Inx[2]], V[V_Inx[0]], V[V_Inx[1]], V[V_Inx[2]]);
+}
 
 void FRTShearCondition::Update(
 	const FVector &P0, const FVector &P1, const FVector &P2,
-	const FVector& V0, const FVector& V1, const FVector& V2)
+	const FVector &V0, const FVector& V1, const FVector& V2)
 {
 	FClothTriangleProperties::Update(P0, P1, P2, V0, V1, V2);
 	C = a * (wu | wv);

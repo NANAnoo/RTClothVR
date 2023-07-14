@@ -1,14 +1,19 @@
 #include "FRTStretchCondition.h"
 
-
-void FRTStretchCondition::ComputeForces(
-	TArray<FVector> const& X, TArray<FVector> const& V, TArray<FVector2D> const& UV, float K, float D,
-	TArray<FVector>& Forces, FRTBBSSMatrix<float>& dfdx,
-	TArray<FVector>& DampingF, FRTBBSSMatrix<float>& dddx, FRTBBSSMatrix<float>& dddv)
+void FRTStretchCondition::UpdateCondition(
+	TArray<FVector> const& X,
+	TArray<FVector> const& V,
+	TArray<FVector2D> const& UV
+	)
 {
 	// Update triangle properties
 	Update(X[V_Inx[0]], X[V_Inx[1]], X[V_Inx[2]], V[V_Inx[0]], V[V_Inx[1]], V[V_Inx[2]]);
-
+}
+void FRTStretchCondition::ComputeForces(
+	float K, float D,
+	TArray<FVector> &Forces, TArray<FVector> &DampingF
+	)
+{
 	// update Forces
 	// E = 0.5 * ( C0*C0 + C1*C1 )
 	// f = -dE/dx = - (C0 dC0/dx + C1 dC1/dx)
@@ -16,8 +21,21 @@ void FRTStretchCondition::ComputeForces(
 	{
 		Forces[V_Inx[i]] -= K * (C0 * dC0dX[i] + C1 * dC1dX[i]);
 	}
-	return;
 
+	// Compute Damping Forces
+	// fd = -d * ( dC0/dt * dC0/dx + dC1/dt * dC1/dx ):
+	for (uint32 i = 0; i < 3; i ++)
+	{
+		DampingF[V_Inx[i]] -= D * (dC0dt * dC0dX[i] + dC1dt * dC1dX[i]);
+	}
+}
+void FRTStretchCondition::ComputeDerivatives(
+	float K, float D,
+	FRTBBSSMatrix<float> &dfdx,
+	FRTBBSSMatrix<float> &dddx,
+	FRTBBSSMatrix<float> &dddv
+)
+{
 	// First Derivative of Force, dfdx
 	FRTMatrix3 CPMat[3][3], dfdX[3][3];
 	for (uint32 i = 0; i < 3; i ++)
@@ -42,13 +60,6 @@ void FRTStretchCondition::ComputeForces(
 				}
 			}
 		}
-	}
-
-	// Compute Damping Forces
-	// fd = -d * ( dC0/dt * dC0/dx + dC1/dt * dC1/dx ):
-	for (uint32 i = 0; i < 3; i ++)
-	{
-		DampingF[V_Inx[i]] -= D * (dC0dt * dC0dX[i] + dC1dt * dC1dX[i]);
 	}
 
 	// Compute And Setup dddv
@@ -91,7 +102,6 @@ void FRTStretchCondition::ComputeForces(
 		}
 	}
 }
-
 
 void FRTStretchCondition::Update(const FVector& P0, const FVector& P1, const FVector& P2, const FVector& V0, const FVector& V1, const FVector& V2)
 {
