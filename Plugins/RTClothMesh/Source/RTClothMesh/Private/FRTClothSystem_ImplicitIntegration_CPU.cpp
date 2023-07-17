@@ -2,13 +2,12 @@
 
 void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
+    FAutoTimer TI("FRTClothSystem_ImplicitIntegration_CPU Tick");
     if (!IsFirstFrame)
     {
-        auto Timer = FPlatformTime::Seconds();
         ForcesAndDerivatives();
-        Timer = (FPlatformTime::Seconds() - Timer) * 1000.0;
-        UE_LOG(LogTemp, Warning, TEXT("ForcesAndDerivatives: %f"), Timer);
     }
+    TI.Tick("ForcesAndDerivatives");
     IsFirstFrame = false;
     // build up equation for solver, A x = b
     // A = M -dfdx * dt * dt - dfdv * dt;
@@ -41,8 +40,9 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
     // solve equation
     TArray<float> dV;
     dV.SetNumZeroed(Velocity.Num() * 3);
+    TI.Tick("Prepare equations");
     Solver->Solve(A, B, dV);
-
+    TI.Tick("Solve equations");
     // update position
     for (int32 i = 0; i < Velocity.Num(); i ++)
     {
@@ -50,6 +50,7 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
         Velocity[i] += DV;
         Mesh->Positions[i] += Duration * Velocity[i];
     }
+    TI.Tick("Update positions");
 }
 
 void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()

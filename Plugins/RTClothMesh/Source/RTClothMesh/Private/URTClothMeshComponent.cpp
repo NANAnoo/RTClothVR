@@ -20,6 +20,7 @@
 #include <Engine/Engine.h>
 
 #include "FRTClothSystem_ImplicitIntegration_CPU.h"
+#include "FRTClothSystem_Verlet_CPU.h"
 
 // data pack
 struct FClothMeshPackedData
@@ -254,13 +255,14 @@ void URTClothMeshComponent::OnRegister()
 			FlushRenderingCommands();
 			// setup cloth solver system
 			ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
+			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			ClothSystem->Init(ClothMesh,
 				{1.0, 0.5, 100, 25, 0.3, 0.1, 1, 95, 95}
 				);
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
 			ClothSystem->AddConstraint(0, {});
-			ClothSystem->AddConstraint(95, {});
-			ClothSystem->SetGravity({0, -7, -7});
+			ClothSystem->AddConstraint(38, {});
+			ClothSystem->SetGravity({0, -7, 0});
 			MarkRenderDynamicDataDirty();
 		}
 	};
