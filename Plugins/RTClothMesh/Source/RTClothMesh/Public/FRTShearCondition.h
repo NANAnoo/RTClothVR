@@ -38,9 +38,6 @@ private:
 
 	// dcdx
 	FVector dCdX[3];
-
-	// d2CdX
-	FRTMatrix3 d2CdXX[3][3];
 	
 	const uint32 V_Inx[3];
 };

@@ -27,6 +27,15 @@ void FRTShearCondition::ComputeDerivatives(
 		FRTBBSSMatrix<float> &dddv
 	)
 {
+	// d2CdX
+	FRTMatrix3 d2CdXX[3][3];
+	for (uint32 i = 0; i < 3; i ++)
+	{
+		for (uint32 j = 0; j < 3; j ++)
+		{
+			d2CdXX[i][j] = FRTMatrix3::Diag(a * (dwudXScalar[i] * dwvdXScalar[j] + dwvdXScalar[i] * dwudXScalar[j]));
+		}
+	}
 	// compute dfdx
 	FRTMatrix3 dC2dX[3][3], dFdX[3][3];
 	for (uint32 i = 0; i < 3; i ++)
@@ -77,7 +86,7 @@ void FRTShearCondition::ComputeDerivatives(
 			{
 				for (uint32 n = 0; n < 3; n ++)
 				{
-					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] -= D * dCdt * d2CdXX[m][n][i][j];
+					dddx[3 * V_Inx[m] + i][3 * V_Inx[n] + j] += - D * dCdt * d2CdXX[m][n][i][j];
 				}
 			}
 		}
@@ -105,12 +114,4 @@ void FRTShearCondition::Update(
 	}
 
 	dCdt = (dCdX[0]|V0) + (dCdX[1]|V1) + (dCdX[2]|V2);
-	
-	for (uint32 i = 0; i < 3; i ++)
-	{
-		for (uint32 j = 0; j < 3; j ++)
-		{
-			d2CdXX[i][j] = FRTMatrix3::Diag(a * (dwudXScalar[i] * dwvdXScalar[j] + dwvdXScalar[i] * dwudXScalar[j]));
-		}
-	}
 }

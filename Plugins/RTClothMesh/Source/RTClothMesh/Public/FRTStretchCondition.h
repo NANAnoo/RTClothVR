@@ -48,10 +48,6 @@ private:
 	FVector dC0dX[3];
 	FVector dC1dX[3];
 
-	// second derivatives of the energy conditions:
-	FRTMatrix3 d2C0dXX[3][3];
-
-	FRTMatrix3 d2C1dXX[3][3];
 	//FTriangleProperties TriProp;
 	// vertex indices
 	const uint32 V_Inx[3];

@@ -56,11 +56,15 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 	uint32 I = 0;
 	UE_LOG(LogTemp, Warning, TEXT("---------------- New Frame -----------------"));
 	double Timer = FPlatformTime::Seconds();
+	double MatVecMul = 0, Other = 0;
 	for (;Delta_new > Tolerance * Tolerance * Delta_0 && I < MaxIterations; I ++)
 	{
+		Timer = FPlatformTime::Seconds();
 		// q = filter(Ac)
 		A.MulVector(Q.GetData(), C.GetData(), C.Num());
 		Filter(Q);
+		MatVecMul += FPlatformTime::Seconds() - Timer;
+		Timer = FPlatformTime::Seconds();
 
 		// α = δnew/(cT q)
 		float Alpha = 0;
@@ -93,10 +97,11 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 			C[i] = S[i] + Delta_old * C[i];
 
 		Filter(C);
+		Other += FPlatformTime::Seconds() - Timer;
 		UE_LOG(LogTemp, Warning, TEXT("delta %f"), Delta_new);
 	}
 	Timer = (FPlatformTime::Seconds() - Timer) * 1000.0;
-	UE_LOG(LogTemp, Warning, TEXT("Iterations %d, Final Delta Radio %f, Cost %f (/It)"), I, Delta_new / (Tolerance * Tolerance * Delta_0), Timer / (I + 1));
+	UE_LOG(LogTemp, Warning, TEXT("Iterations %d, Final Delta Radio %f, Cost %f (/It), MulVec %f, VecVec %f"), I, Delta_new / (Tolerance * Tolerance * Delta_0), Timer / (I + 1), MatVecMul, Other);
 }
 
 FModifiedCGSolver::~FModifiedCGSolver()

@@ -29,12 +29,16 @@ struct FRTClothPhysicalMaterial
 
 	// mass per area for each triangle
 	Real Density;
+
+	// rest U V
+	Real Rest_U;
+	Real Rest_V;
 };
 
 class FRTClothSystemBase
 {
 public:
-	FRTClothSystemBase() : M_Material({0, 0, 0, 0, 0, 0, 0}){};
+	FRTClothSystemBase() : M_Material({0, 0, 0, 0, 0, 0, 0, 0, 0}){};
 
 	virtual ~FRTClothSystemBase() {}
 	
@@ -43,6 +47,11 @@ public:
 		std::shared_ptr<FClothRawMesh> const& Mesh,
 		FRTClothPhysicalMaterial<float> const& Material
 	);
+
+	FORCEINLINE void SetGravity(FVector const&G)
+	{
+		Gravity = G;
+	}
 
 	void AddConstraint(uint32 Id, FClothConstraint const& Constraint)
 	{
@@ -172,5 +181,5 @@ protected:
 	TMap<uint32, FRTMatrix3> Constraints;
 
 	// Gravity
-	FVector Gravity = {0, 0, -10};
+	FVector Gravity = {0, 0, 0};
 };

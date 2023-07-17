@@ -46,10 +46,9 @@ void FRTClothSystem::TickOnce(float Duration)
     // update position
     for (int32 i = 0; i < Velocity.Num(); i ++)
     {
-        FVector const DV = {dV[3 *i] / 2, dV[3 * i + 1] / 2, dV[3 * i + 2] / 2};
+        FVector const DV = {dV[3 * i], dV[3 * i + 1], dV[3 * i + 2]};
         Velocity[i] += DV;
         Mesh->Positions[i] += Duration * Velocity[i];
-        Velocity[i] += DV;
     }
 }
 
@@ -65,30 +64,31 @@ void FRTClothSystem::ForcesAndDerivatives()
     }
     Df_Dx.SetValues(0.f);
     Df_Dv.SetValues(0.f);
-    for (auto &Con : StretchConditions)
+
+    if (M_Material.K_Bend > 0.01)
     {
-        Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
-        Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, DampingForces);
-        Con.ComputeDerivatives(M_Material.K_Stretch, M_Material.D_Stretch, Df_Dx, Df_Dx, Df_Dv);
+        for (auto &Con : BendConditions)
+        {
+            Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
+            Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
+            Con.ComputeDerivatives(M_Material.K_Bend, M_Material.D_Bend, Df_Dx, Df_Dx, Df_Dv);
+        }
     }
     if (M_Material.K_Shear > 0.01)
     {
         for (auto &Con : ShearConditions)
         {
             Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
-            Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, DampingForces);
+            Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, Forces);
             Con.ComputeDerivatives(M_Material.K_Shear, M_Material.D_Shear, Df_Dx, Df_Dx, Df_Dv);
         }
     }
     
-    if (M_Material.K_Bend > 0.01)
+    for (auto &Con : StretchConditions)
     {
-        for (auto &Con : BendConditions)
-        {
-            Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
-            Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, DampingForces);
-            Con.ComputeDerivatives(M_Material.K_Bend, M_Material.D_Bend, Df_Dx, Df_Dx, Df_Dv);
-        }
+        Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
+        Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+        Con.ComputeDerivatives(M_Material.K_Stretch, M_Material.D_Stretch, Df_Dx, Df_Dx, Df_Dv);
     }
     
 }
@@ -103,7 +103,7 @@ void FRTClothSystem::PrepareSimulation()
     {
         auto &F = getFaceAt(i);
         ShearConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2]});
-        StretchConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2], 100.f, 100.f});
+        StretchConditions.Add({Mesh.get(), F.vertex_index[0], F.vertex_index[1], F.vertex_index[2], M_Material.Rest_U, M_Material.Rest_V});
     }
     // set up bend conditions
     uint32 PairNum = 0;
