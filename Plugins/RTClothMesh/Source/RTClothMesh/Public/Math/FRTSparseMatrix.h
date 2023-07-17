@@ -46,7 +46,7 @@ public:
 			if (Mat->IsLockPattern)
 			{
 				auto const Eid = Raw * Mat->Pattern.Size + J;
-				check(Mat->IDToCompressedID.Contains(Eid));
+				check(Mat->IDToCompressedID.Contains(Eid)); // TODO: binary search to get CompressedID
 				return Mat->OffDiagData[Mat->IDToCompressedID[Eid]];
 			}
 			Mat->ReleaseCompressedData();

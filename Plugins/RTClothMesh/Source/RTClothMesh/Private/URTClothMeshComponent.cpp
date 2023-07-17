@@ -20,6 +20,7 @@
 #include <Engine/Engine.h>
 
 #include "FRTClothSystem_ImplicitIntegration_CPU.h"
+#include "FRTClothSystem_Leapfrog_CPU.h"
 #include "FRTClothSystem_Verlet_CPU.h"
 
 // data pack
@@ -254,8 +255,9 @@ void URTClothMeshComponent::OnRegister()
 			}
 			FlushRenderingCommands();
 			// setup cloth solver system
-			ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
+			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
 			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
 			ClothSystem->Init(ClothMesh,
 				{1.0, 0.5, 100, 25, 0.3, 0.1, 1, 95, 95}
 				);
