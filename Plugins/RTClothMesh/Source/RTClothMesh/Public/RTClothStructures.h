@@ -123,9 +123,9 @@ struct FClothConstraint
 		switch (LockingDegree)
 		{
 		case ConstraintOnPlane:
-			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P, P);
+			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P / P.Size(), P / P.Size());
 		case ConstraintOnLine:
-			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P, P) - FRTMatrix3::CrossVec(Q, Q);
+			return FRTMatrix3::Identity() - FRTMatrix3::CrossVec(P / P.Size(), P / P.Size()) - FRTMatrix3::CrossVec(Q / Q.Size(), Q / Q.Size());
 		case Fixed:
 		default:
 			return FRTMatrix3::Zero();

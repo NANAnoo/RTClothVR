@@ -1,6 +1,6 @@
-﻿#include "FRTClothSystem.h"
+﻿#include "FRTClothSystem_ImplicitIntegration_CPU.h"
 
-void FRTClothSystem::TickOnce(float Duration)
+void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
     if (!IsFirstFrame)
     {
@@ -52,7 +52,7 @@ void FRTClothSystem::TickOnce(float Duration)
     }
 }
 
-void FRTClothSystem::ForcesAndDerivatives()
+void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
 {
     for (int32 i = 0; i < Forces.Num(); i ++)
     {
@@ -93,7 +93,7 @@ void FRTClothSystem::ForcesAndDerivatives()
     
 }
 
-void FRTClothSystem::PrepareSimulation()
+void FRTClothSystem_ImplicitIntegration_CPU::PrepareSimulation()
 {
     IsFirstFrame = true;
     // setup shear and stretch conditions

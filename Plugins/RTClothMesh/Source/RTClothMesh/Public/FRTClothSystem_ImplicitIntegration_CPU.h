@@ -10,10 +10,10 @@
 #include <memory>
 #include "FRTClothSolver.h"
 
-class FRTClothSystem : public FRTClothSystemBase
+class FRTClothSystem_ImplicitIntegration_CPU : public FRTClothSystemBase
 {
 public:
-	explicit FRTClothSystem(std::shared_ptr<IRTLinearSolver<float>> const &ASolver)
+	explicit FRTClothSystem_ImplicitIntegration_CPU(std::shared_ptr<IRTLinearSolver<float>> const &ASolver)
 		: Solver(ASolver) {}
 
 	virtual void TickOnce(float Duration) override;

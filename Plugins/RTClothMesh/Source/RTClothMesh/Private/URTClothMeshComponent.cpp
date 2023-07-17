@@ -19,7 +19,7 @@
 
 #include <Engine/Engine.h>
 
-#include "FRTClothSystem.h"
+#include "FRTClothSystem_ImplicitIntegration_CPU.h"
 
 // data pack
 struct FClothMeshPackedData
@@ -253,7 +253,7 @@ void URTClothMeshComponent::OnRegister()
 			}
 			FlushRenderingCommands();
 			// setup cloth solver system
-			ClothSystem = std::make_unique<FRTClothSystem>(std::make_shared<FModifiedCGSolver>());
+			ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
 			ClothSystem->Init(ClothMesh,
 				{1.0, 0.5, 100, 25, 0.3, 0.1, 1, 95, 95}
 				);
