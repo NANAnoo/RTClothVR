@@ -17,7 +17,12 @@
 		{
 			"Name": "RTClothMesh",
 			"Type": "Runtime",
-			"LoadingPhase": "Default"
+			"LoadingPhase": "PostConfigInit"
+		},
+		{
+			"Name": "RTClothShader",
+			"Type": "Runtime",
+			"LoadingPhase": "PostConfigInit"
 		}
 	]
 }
