@@ -19,100 +19,13 @@
 
 #include <Engine/Engine.h>
 
+#include "FRTDynamicVertexBuffer.h"
+
 #include "FRTClothSystem_ImplicitIntegration_CPU.h"
 #include "FRTClothSystem_Leapfrog_CPU.h"
 #include "FRTClothSystem_Verlet_CPU.h"
 
 #include "FTestCS.h"
-
-class FRTDynamicVertexBuffer : public FVertexBuffer
-{
-private:
-	struct FRTVertex
-	{
-		FRTVertex() {}
-		FRTVertex(float x, float y, float z) : X(x), Y(y), Z(z) {}
-		FRTVertex(FRTVertex const& Vec) : X(Vec.X), Y(Vec.Y), Z(Vec.Z) 
-		{
-		}
-		FRTVertex& operator=(FVector const& Vec)
-		{
-			X = Vec.X;
-			Y = Vec.Y;
-			Z = Vec.Z;
-			return *this;
-		}
-		float X = 0;
-		float Y = 0;
-		float Z = 0;
-	};
-	int32 NumVertices = 0;
-	TResourceArray<FRTVertex> VertexData;
-	FUnorderedAccessViewRHIRef Position_UAV;
-	FShaderResourceViewRHIRef PositionComponentSRV;
-	
-	FVertexBufferRHIRef CreateRHIBuffer_RenderThread()
-	{
-		if (NumVertices)
-		{
-			FRHIResourceCreateInfo CreateInfo;
-			CreateInfo.ResourceArray = &VertexData;
-			return RHICreateVertexBuffer(sizeof(FRTVertex) * NumVertices, BUF_UnorderedAccess | BUF_ShaderResource, CreateInfo);
-		}
-		return nullptr;
-	}
-public:
-	void Init(uint32 Num)
-	{
-		NumVertices = Num;
-		VertexData.Init({0, 0, 0}, Num);
-	}
-
-	uint32 GetNumVertices() const {return NumVertices;}
-
-	uint32 GetDataSize() const {return NumVertices * sizeof(FRTVertex);}
-
-	FRTVertex &VertexPosition(uint32 i)
-	{
-		return VertexData[i];
-	}
-
-	void BindPositionVertexBuffer(const FVertexFactory* VertexFactory, FStaticMeshDataType& StaticMeshData) const
-	{
-		StaticMeshData.PositionComponent = FVertexStreamComponent(
-			this,
-			0,
-			sizeof(FRTVertex),
-			VET_Float3
-		);
-		StaticMeshData.PositionComponentSRV = PositionComponentSRV;
-	}
-	
-	// FRenderResource interface.
-	virtual void InitRHI() override
-	{
-		VertexBufferRHI = CreateRHIBuffer_RenderThread();
-		if (VertexBufferRHI)
-		{
-			Position_UAV = RHICreateUnorderedAccessView(VertexBufferRHI, PF_FloatRGB);
-			PositionComponentSRV = RHICreateShaderResourceView(FShaderResourceViewInitializer(VertexBufferRHI, PF_R32_FLOAT));
-		}
-	}
-	FUnorderedAccessViewRHIRef const& GetPositionUAV() {return this->Position_UAV;}
-	virtual void ReleaseRHI() override
-	{
-		Position_UAV.SafeRelease();
-		PositionComponentSRV.SafeRelease();
-		FVertexBuffer::ReleaseRHI();
-	}
-	virtual FString GetFriendlyName() const override { return TEXT("PositionOnly Static-mesh vertices"); }
-};
-
-// data pack
-struct FClothMeshPackedData
-{
-	TArray<FVector> *Positions;
-};
 
 // a custom scene proxy
 class FClothMeshSceneProxy : public FPrimitiveSceneProxy
@@ -281,51 +194,38 @@ public:
 		return(FPrimitiveSceneProxy::GetAllocatedSize());
 	}
 
-	// mesh builder
-	void SetDynamicData_RenderThread(FClothMeshPackedData const* NewData)
-	{
-		check(IsInRenderingThread());
-		
-		BuildMesh(NewData);
-	}
-	void BuildMesh(FClothMeshPackedData const* NewData)
-	{
-		// // Lock vertex buffer
-		const int32 NumVerts = NewData->Positions->Num();
-		
-		// // Iterate through vertex data, update Position
-		// for(int32 i=0; i<NumVerts; i++)
-		// {
-		// 	VertexBuffers.PositionVertexBuffer.VertexPosition(i) = (*NewData->Positions)[i];
-		// }
-		//
-		// {
-		// 	// upload to GPU, update position only
-		// 	auto& VertexBuffer = VertexBuffers.PositionVertexBuffer;
-		// 	void* VertexBufferData = RHILockVertexBuffer(VertexBuffer.VertexBufferRHI, 0, VertexBuffer.GetNumVertices() * VertexBuffer.GetStride(), RLM_WriteOnly);
-		// 	FMemory::Memcpy(VertexBufferData, VertexBuffer.GetVertexData(), VertexBuffer.GetNumVertices() * VertexBuffer.GetStride());
-		// 	RHIUnlockVertexBuffer(VertexBuffer.VertexBufferRHI);
-		// }
-		auto & RHICommands = GetImmediateCommandList_ForRenderCommand();
-		TShaderMapRef<FTestCS> const TestCS(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-		FRHIComputeShader* AddCS = TestCS.GetComputeShader();
-		
-		RHICommands.SetUAVParameter(AddCS, TestCS->Positions.GetBaseIndex(), PositionVertexBuffer.GetPositionUAV());
-		RHICommands.SetComputeShader(AddCS);
-		DispatchComputeShader(RHICommands, TestCS, 16, 1, 1);
+	// // mesh builder
+	// void SetDynamicData_RenderThread(FClothMeshPackedData const* NewData)
+	// {
+	// 	check(IsInRenderingThread());
+	// 	
+	// 	BuildMesh(NewData);
+	// }
+	// void BuildMesh(FClothMeshPackedData const* NewData)
+	// {
+	// 	auto & RHICommands = GetImmediateCommandList_ForRenderCommand();
+	// 	TShaderMapRef<FTestCS> const TestCS(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	// 	FRHIComputeShader* AddCS = TestCS.GetComputeShader();
+	// 	
+	// 	RHICommands.SetUAVParameter(AddCS, TestCS->Positions.GetBaseIndex(), PositionVertexBuffer.GetPositionUAV());
+	// 	RHICommands.SetComputeShader(AddCS);
+	// 	DispatchComputeShader(RHICommands, TestCS, 16, 1, 1);
+	//
+	// 	TArray<FVector> result;
+	// 	result.SetNumUninitialized(PositionVertexBuffer.GetNumVertices());
+	// 	uint8* data = (uint8*)RHILockVertexBuffer(PositionVertexBuffer.VertexBufferRHI, 0,  PositionVertexBuffer.GetDataSize(), RLM_ReadOnly);
+	// 	FMemory::Memcpy(result.GetData(), data, PositionVertexBuffer.GetDataSize());		
+	// 	RHIUnlockVertexBuffer(PositionVertexBuffer.VertexBufferRHI);
+	// }
 
-		TArray<FVector> result;
-		result.SetNumUninitialized(PositionVertexBuffer.GetNumVertices());
-		uint8* data = (uint8*)RHILockVertexBuffer(PositionVertexBuffer.VertexBufferRHI, 0,  PositionVertexBuffer.GetDataSize(), RLM_ReadOnly);
-		FMemory::Memcpy(result.GetData(), data, PositionVertexBuffer.GetDataSize());		
-		RHIUnlockVertexBuffer(PositionVertexBuffer.VertexBufferRHI);
-	}
-
-	virtual  SIZE_T GetTypeHash() const override
+	virtual SIZE_T GetTypeHash() const override
 	{
 		static size_t UniquePointer;
 		return reinterpret_cast<size_t>(&UniquePointer);
 	}
+
+	FORCEINLINE FRTDynamicVertexBuffer &PositionBuffer() {return PositionVertexBuffer;}
+	
 private: 
 	
 	/** Material applied to this section */
@@ -395,8 +295,8 @@ void URTClothMeshComponent::OnRegister()
 				{1.0, 0.5, 100, 25, 0.3, 0.1, 1, 95, 95}
 				);
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(0, {});
-			ClothSystem->AddConstraint(38, {});
+			ClothSystem->AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
+			ClothSystem->AddConstraint(38, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
 			ClothSystem->SetGravity({0, -7, 0});
 			MarkRenderDynamicDataDirty();
 		}
@@ -610,12 +510,10 @@ void URTClothMeshComponent::SendRenderDynamicData_Concurrent()
 		ENQUEUE_RENDER_COMMAND(URTClothMeshComponentUpdate)(
 			[this](FRHICommandListImmediate &CmdList)
 			{
-				FClothMeshPackedData Data;
-				Data.Positions = &ClothMesh->Positions;
 				auto const ProcProxy = static_cast<FClothMeshSceneProxy *>(SceneProxy);
 				if (ProcProxy)
 				{
-					ProcProxy->SetDynamicData_RenderThread(&Data);
+					ClothSystem->UpdatePositionDataTo(ProcProxy->PositionBuffer());
 				}
 			}
 		);

@@ -22,6 +22,16 @@ void FRTClothSystemBase::UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 	PrepareSimulation();
 }
 
+void FRTClothSystemBase::UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer)
+{
+    // default implementation is to copy position into DstBuffer
+    check(IsInRenderingThread());
+    // upload to GPU, update position only
+    void* VertexBufferData = RHILockVertexBuffer(DstBuffer.VertexBufferRHI, 0, DstBuffer.GetDataSize(), RLM_WriteOnly);
+    FMemory::Memcpy(VertexBufferData, Mesh->Positions.GetData(), DstBuffer.GetDataSize());
+    RHIUnlockVertexBuffer(DstBuffer.VertexBufferRHI);
+}
+
 void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 {
 	Mesh = AMesh;

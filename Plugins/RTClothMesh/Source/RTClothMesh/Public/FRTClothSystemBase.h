@@ -10,6 +10,7 @@
 #include <memory>
 
 #include "FRTClothSolver.h"
+#include "FRTDynamicVertexBuffer.h"
 
 // the simulation parameters
 template <typename  Real>
@@ -78,6 +79,9 @@ public:
 
 	// simulate for one tick
 	virtual void TickOnce(float Duration) = 0;
+
+	// update data into DstBuffer
+	virtual void UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer);
 	
 protected:
 
