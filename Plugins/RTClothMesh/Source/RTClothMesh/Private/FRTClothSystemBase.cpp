@@ -77,7 +77,7 @@ void FRTClothSystemBase::MakeDirectedEdgeModel()
                 first_directed_edge_of_vertex[vertex_index] = to_edge_ref;
             }
             // init edge as key, O(1)
-            HalfEdge to_edge({vertex_index, face.vertex_index[(i + 1) % 3]});
+            HalfEdge to_edge({vertex_index, static_cast<uint32>(face.vertex_index[(i + 1) % 3])});
             HalfEdge other_edge({to_edge.vertex_to, to_edge.vertex_from});
             auto p = edge2edgeindex_map.find(to_edge);
 

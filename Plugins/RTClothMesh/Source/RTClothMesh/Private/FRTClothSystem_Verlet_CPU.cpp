@@ -19,7 +19,7 @@ void FRTClothSystem_Verlet_CPU::Acceleration()
 	{
 		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
 		// Serious numerical un-stability meet while using original Shader Damping
-		Con.ComputeForces(M_Material.K_Shear, 0, Forces, Forces);
+		Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, Forces);
 	}
 	for (auto &Con : BendConditions)
 	{

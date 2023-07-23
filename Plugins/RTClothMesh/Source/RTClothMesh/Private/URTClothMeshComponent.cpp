@@ -23,9 +23,8 @@
 
 #include "FRTClothSystem_ImplicitIntegration_CPU.h"
 #include "FRTClothSystem_Leapfrog_CPU.h"
+#include "FRTClothSystemGPUBase.h"
 #include "FRTClothSystem_Verlet_CPU.h"
-
-#include "FTestCS.h"
 
 // a custom scene proxy
 class FClothMeshSceneProxy : public FPrimitiveSceneProxy
@@ -184,7 +183,7 @@ public:
 		return !MaterialRelevance.bDisableDepthTest;
 	}
 
-	virtual uint32 GetMemoryFootprint(void) const
+	virtual uint32 GetMemoryFootprint(void) const override
 	{
 		return(sizeof(*this) + GetAllocatedSize());
 	}
@@ -193,31 +192,7 @@ public:
 	{
 		return(FPrimitiveSceneProxy::GetAllocatedSize());
 	}
-
-	// // mesh builder
-	// void SetDynamicData_RenderThread(FClothMeshPackedData const* NewData)
-	// {
-	// 	check(IsInRenderingThread());
-	// 	
-	// 	BuildMesh(NewData);
-	// }
-	// void BuildMesh(FClothMeshPackedData const* NewData)
-	// {
-	// 	auto & RHICommands = GetImmediateCommandList_ForRenderCommand();
-	// 	TShaderMapRef<FTestCS> const TestCS(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	// 	FRHIComputeShader* AddCS = TestCS.GetComputeShader();
-	// 	
-	// 	RHICommands.SetUAVParameter(AddCS, TestCS->Positions.GetBaseIndex(), PositionVertexBuffer.GetPositionUAV());
-	// 	RHICommands.SetComputeShader(AddCS);
-	// 	DispatchComputeShader(RHICommands, TestCS, 16, 1, 1);
-	//
-	// 	TArray<FVector> result;
-	// 	result.SetNumUninitialized(PositionVertexBuffer.GetNumVertices());
-	// 	uint8* data = (uint8*)RHILockVertexBuffer(PositionVertexBuffer.VertexBufferRHI, 0,  PositionVertexBuffer.GetDataSize(), RLM_ReadOnly);
-	// 	FMemory::Memcpy(result.GetData(), data, PositionVertexBuffer.GetDataSize());		
-	// 	RHIUnlockVertexBuffer(PositionVertexBuffer.VertexBufferRHI);
-	// }
-
+	
 	virtual SIZE_T GetTypeHash() const override
 	{
 		static size_t UniquePointer;
@@ -288,16 +263,18 @@ void URTClothMeshComponent::OnRegister()
 			}
 			FlushRenderingCommands();
 			// setup cloth solver system
-			ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
+			// ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			ClothSystem->Init(ClothMesh,
-				{1.0, 0.5, 100, 25, 0.3, 0.1, 1, 95, 95}
-				);
+			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
-			ClothSystem->AddConstraint(38, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
+			ClothSystem->AddConstraint(0, {});
+			ClothSystem->AddConstraint(38, {});
 			ClothSystem->SetGravity({0, -7, 0});
+
+			ClothSystem->Init(ClothMesh,
+				{1.0, 0.5, 100, 25, 0.3, 0.001 , 95, 95, 1}
+				);
 			MarkRenderDynamicDataDirty();
 		}
 	};
@@ -371,10 +348,6 @@ void URTClothMeshComponent::SetupCloth_RenderThread(UStaticMesh *Mesh) const
 	// get index data;
 	auto const NumIndices = IB.GetNumIndices();
 	ClothMesh->Indices.SetNumZeroed(NumIndices);
-	UE_LOG(LogTemp, Warning, TEXT("Indices 16 CPU Data %p"), IB.AccessStream16());
-	UE_LOG(LogTemp, Warning, TEXT("Indices 32 CPU Data %p"), IB.AccessStream32());
-	UE_LOG(LogTemp, Warning, TEXT("Indices Count %d"), NumIndices);
-	UE_LOG(LogTemp, Warning, TEXT("Indices Status %d"), IB.IsInitialized() && IB.IndexBufferRHI.IsValid());
 	// copy from RHI
 	TArray<uint8> IndexRawData;
 	IndexRawData.SetNumZeroed(NumIndices * sizeof(IB.IndexBufferRHI->GetStride()));

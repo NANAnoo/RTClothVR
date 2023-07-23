@@ -28,12 +28,12 @@ struct FRTClothPhysicalMaterial
 	Real K_Shear;
 	Real D_Shear;
 
-	// mass per area for each triangle
-	Real Density;
-
 	// rest U V
 	Real Rest_U;
 	Real Rest_V;
+
+	// mass per area for each triangle
+	Real Density;
 };
 
 class FRTClothSystemBase
@@ -100,7 +100,7 @@ protected:
 	// same as that in FaceIndex, record vertices index in CCW
 	struct Face
 	{
-		unsigned int vertex_index[3];
+		int vertex_index[3];
 	};
 
 	// temporary structure, used only in hash map

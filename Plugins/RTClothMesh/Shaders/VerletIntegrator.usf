@@ -1,0 +1,51 @@
+﻿#pragma once
+#include </Engine/Public/Platform.ush>
+#include "FRTClothStructures.ush"
+
+uniform FClothSimulationParameterUB SimParams;
+
+// velocities of cloth mesh
+RWStructuredBuffer<float3> Velocities;
+
+// positions of cloth mesh
+RWStructuredBuffer<float3> Pre_Positions;
+RWStructuredBuffer<float3> Positions;
+
+// Internal forces
+StructuredBuffer<float3> Forces;
+
+// Mass of cloth mesh
+StructuredBuffer<float> Masses;
+
+// constraint map
+// StructuredBuffer<int> ConstraintMap;
+// StructuredBuffer<float3> ConstraintData;
+
+[numthreads(16, 1, 1)]
+void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
+{
+	uint NumOfVertices, _;
+	Positions.GetDimensions(NumOfVertices, _);
+
+	int Index = ThreadId.x;
+	if (NumOfVertices <= Index) return;
+	
+	// effective calculate constraint here
+	// int ConID = ConstraintMap[Index] * 3;
+	// float f_0 = dot(ConstraintData[ConID], Force);
+	// float f_1 = dot(ConstraintData[ConID + 1], Force);
+	// float f_2 = dot(ConstraintData[ConID + 2], Force);
+	// Force = float3(f_0, f_1, f_2);
+
+	float3 Acc = (Forces[Index] / Masses[Index]) + float3(0, -7, 0);
+	if (Index == 0 || Index == 38) Acc = float3(0, 0, 0);
+	float3 CurrentPos = Positions[Index];
+	float3 PrePos = Pre_Positions[Index];
+	
+	// // update position using verlet
+	float3 NewPos = CurrentPos * 2 - PrePos + (0.01f * 0.01f ) * Acc;
+	
+	Velocities[Index] = (NewPos - PrePos) / (2 * SimParams.DT);
+	Pre_Positions[Index] = CurrentPos;
+	Positions[Index] = NewPos;
+}

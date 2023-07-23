@@ -1,0 +1,32 @@
+﻿#pragma once
+#include </Engine/Public/Platform.ush>
+
+// local forces cache, three forces on the processed triangle
+RWStructuredBuffer<float3> LocalForces;
+RWStructuredBuffer<float3> Forces;
+
+// indices reference for each vertex
+StructuredBuffer<int> PreSumOfRefIndices;
+StructuredBuffer<int> SubForceIndices;
+
+[numthreads(16, 1, 1)]
+void AssembleForce(uint3 ThreadId : SV_DispatchThreadID)
+{
+	uint NumOfVertices, _;
+	Forces.GetDimensions(NumOfVertices, _);
+
+	int Index = ThreadId.x;
+	if (NumOfVertices <= Index) return;
+	
+	int StartIndex = PreSumOfRefIndices[Index];
+	int EndIndex = PreSumOfRefIndices[Index + 1];
+
+	float3 Force = float3(0, 0, 0);
+	for (int i = StartIndex; i < EndIndex; i ++)
+	{
+		int LocalID = SubForceIndices[i];
+		Force += LocalForces[LocalID];
+		LocalForces[LocalID] = float3(0, 0, 0);
+	}
+	Forces[Index] = Force;
+}

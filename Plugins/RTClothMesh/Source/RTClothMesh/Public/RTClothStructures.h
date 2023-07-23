@@ -41,8 +41,9 @@ struct FClothRawMesh
 struct FClothTriangleStaticProperties
 {
 	explicit FClothTriangleStaticProperties(
-		const FVector2D &uv0, const FVector2D &uv1, const FVector2D &uv2
-	)
+		const int P0, const int P1, const int P2, 
+		const FVector2D &uv0, const FVector2D uv1, const FVector2D &uv2
+	) : V_Inx{P0, P1, P2}
 	{
 		FVector2D duv1 = uv1 - uv0;
 		FVector2D duv2 = uv2 - uv0;
@@ -62,21 +63,14 @@ struct FClothTriangleStaticProperties
 		dwvdXScalar[0] = (du2 - du1) / d;
 		dwvdXScalar[1] = -du2 / d;
 		dwvdXScalar[2] = du1 / d;
-
-		for (uint32 i = 0; i < 3; i ++)
-		{
-			dwudX[i] = FRTMatrix3::Diag(dwudXScalar[i]);
-			dwvdX[i] = FRTMatrix3::Diag(dwvdXScalar[i]);
-		}
 	}
+	
+	int ID = 0; 
+	int V_Inx[3];
 	float du1, dv1, du2, dv2, a, d;
 	
 	float dwudXScalar[3];
 	float dwvdXScalar[3];
-	
-	// partial derivatives of Wu Wv on Three Positions:
-	FRTMatrix3 dwudX[3];
-	FRTMatrix3 dwvdX[3];
 };
 
 // computed only once
@@ -87,10 +81,20 @@ public:
 	FVector wu, wv;
 	float wuNorm = 0, wvNorm = 0;
 
+	// partial derivatives of Wu Wv on Three Positions:
+	FRTMatrix3 dwudX[3];
+	FRTMatrix3 dwvdX[3];
+
 	FClothTriangleProperties (
+		const int P0, const int P1, const int P2, 
 		const FVector2D &uv0, const FVector2D &uv1, const FVector2D &uv2
-	) : FClothTriangleStaticProperties(uv0, uv1, uv2)
+	) : FClothTriangleStaticProperties(P0, P1, P2, uv0, uv1, uv2)
 	{
+		for (uint32 i = 0; i < 3; i ++)
+		{
+			dwudX[i] = FRTMatrix3::Diag(dwudXScalar[i]);
+			dwvdX[i] = FRTMatrix3::Diag(dwvdXScalar[i]);
+		}
 	}
 
 	virtual ~FClothTriangleProperties() {}

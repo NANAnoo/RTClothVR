@@ -8,13 +8,13 @@
 
 #include <atomic>
 
-class FTestCS : public FGlobalShader
+class FStretchShearConditionCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FTestCS, Global);
+	DECLARE_SHADER_TYPE(FStretchShearConditionCS, Global);
 
-	FTestCS() {}
+	FStretchShearConditionCS() {}
 
-	explicit FTestCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
+	explicit FStretchShearConditionCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) {
 		return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5;
@@ -22,6 +22,9 @@ class FTestCS : public FGlobalShader
 
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
 
+	LAYOUT_FIELD(FShaderUniformBufferParameter, SimParams);
+	LAYOUT_FIELD(FShaderResourceParameter, ConditionBasis);
+	LAYOUT_FIELD(FShaderResourceParameter, Velocities);
 	LAYOUT_FIELD(FShaderResourceParameter, Positions);
-	//LAYOUT_FIELD(FShaderUniformBufferParameter, NumOfVertices);
+	LAYOUT_FIELD(FShaderResourceParameter, LocalForces);
 };

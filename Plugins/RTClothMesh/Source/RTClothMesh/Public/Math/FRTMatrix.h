@@ -93,26 +93,6 @@ public:
 		return *this;
 	}
 	
-	template<uint32 R>
-	FORCEINLINE friend FRTMatrix<float, R, 1> operator*(FRTMatrix<float, R, 3> const& Mat, FVector const& Vec)
-	{
-		FRTMatrix<float, R, 1> Res;
-		for (uint32 i = 0; i < R; i ++)
-		{
-			Res[i][0] = Mat[i][0] * Vec[0] + Mat[i][1] * Vec[1] + Mat[i][2] * Vec[2];
-		}
-		return Res;
-	}
-	
-	FORCEINLINE friend FVector operator*(FRTMatrix<float, 3, 3> const& Mat, FVector const& Vec)
-	{
-		return {
-			Mat[0][0] * Vec[0] + Mat[0][1] * Vec[1] + Mat[0][2] * Vec[2],
-			Mat[1][0] * Vec[0] + Mat[1][1] * Vec[1] + Mat[1][2] * Vec[2],
-			Mat[2][0] * Vec[0] + Mat[2][1] * Vec[1] + Mat[2][2] * Vec[2]
-		};
-	}
-	
 	FORCEINLINE static FRTMatrix<Real, Raw, Raw> Identity()
 	{
 		FRTMatrix<Real, Raw, Raw> Res;
@@ -203,6 +183,27 @@ protected:
 	Real Data[Raw * Col] = {Real(0)};
 };
 
+template<uint32 R>
+FORCEINLINE static FRTMatrix<float, R, 1> operator*(FRTMatrix<float, R, 3> const& Mat, FVector const& Vec)
+{
+	FRTMatrix<float, R, 1> Res;
+	for (uint32 i = 0; i < R; i ++)
+	{
+		Res[i][0] = Mat[i][0] * Vec[0] + Mat[i][1] * Vec[1] + Mat[i][2] * Vec[2];
+	}
+	return Res;
+}
+
+static FVector operator*(FRTMatrix<float, 3, 3> const& Mat, FVector const& Vec)
+{
+	return {
+		Mat[0][0] * Vec[0] + Mat[0][1] * Vec[1] + Mat[0][2] * Vec[2],
+		Mat[1][0] * Vec[0] + Mat[1][1] * Vec[1] + Mat[1][2] * Vec[2],
+		Mat[2][0] * Vec[0] + Mat[2][1] * Vec[1] + Mat[2][2] * Vec[2]
+	};
+}
+
+typedef FRTMatrix<float, 4, 4> FRTMatrix4;
 
 typedef FRTMatrix<float, 3, 3> FRTMatrix3;
 

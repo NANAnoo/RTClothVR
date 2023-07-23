@@ -6,10 +6,9 @@
 class FRTStretchCondition : FClothTriangleProperties, public FRTEnergyCondition
 {
 public:
-	FRTStretchCondition(FClothRawMesh *const mesh, uint32 P0, uint32 P1, uint32 P2, float Rest_U = 1.f, float Rest_V = 1.f)
-		: FClothTriangleProperties(mesh->TexCoords[P0], mesh->TexCoords[P1], mesh->TexCoords[P2]),
-			RestU(Rest_U), RestV(Rest_V),
-			V_Inx{P0, P1, P2}
+	FRTStretchCondition(FClothRawMesh *const mesh, int P0, int P1, int P2, float Rest_U = 1.f, float Rest_V = 1.f)
+		: FClothTriangleProperties(P0, P1, P2,mesh->TexCoords[P0], mesh->TexCoords[P1], mesh->TexCoords[P2]),
+			RestU(Rest_U), RestV(Rest_V)
 	{
 	}
 	
@@ -47,8 +46,4 @@ private:
 	// derivatives of the energy conditions:
 	FVector dC0dX[3];
 	FVector dC1dX[3];
-
-	//FTriangleProperties TriProp;
-	// vertex indices
-	const uint32 V_Inx[3];
 };

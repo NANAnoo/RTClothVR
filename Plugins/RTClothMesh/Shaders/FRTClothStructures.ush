@@ -1,0 +1,42 @@
+﻿#pragma once
+
+struct FTriangleCondition
+{
+	int ID;
+	int Idx[3]; // indices of triangles
+	float du1, dv1, du2, dv2;
+
+	float a; // area of triangle in UV space
+	float d; // du1 * dv2 - du2 * dv1
+	
+	float dwudXScalar[3];
+	float dwvdXScalar[3];
+};
+
+struct FTrianglePairCondition
+{
+	int Idx[4];
+};
+
+struct FClothSimulationParameterUB
+{
+	// for bend condition
+	float K_Bend;
+	float D_Bend;
+
+	// for stretch condition
+	float K_Stretch;
+	float D_Stretch;
+
+	// for shear condition
+	float K_Shear;
+	float D_Shear;
+
+	// rest U V
+	float Rest_U;
+	float Rest_V;
+
+	// simulation parameters
+	float DT; // duration
+	float3 ExternalForce;
+};

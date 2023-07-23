@@ -6,9 +6,8 @@
 class FRTShearCondition : FClothTriangleProperties, public FRTEnergyCondition
 {
 public:
-	FRTShearCondition(FClothRawMesh *const mesh, uint32 P0, uint32 P1, uint32 P2)
-		: FClothTriangleProperties(mesh->TexCoords[P0], mesh->TexCoords[P1], mesh->TexCoords[P2]),
-			V_Inx{P0, P1, P2}
+	FRTShearCondition(FClothRawMesh *const mesh, int P0, int P1, int P2)
+		: FClothTriangleProperties(P0, P1, P2,mesh->TexCoords[P0], mesh->TexCoords[P1], mesh->TexCoords[P2])
 	{
 	
 	}
@@ -38,6 +37,4 @@ private:
 
 	// dcdx
 	FVector dCdX[3];
-	
-	const uint32 V_Inx[3];
 };
