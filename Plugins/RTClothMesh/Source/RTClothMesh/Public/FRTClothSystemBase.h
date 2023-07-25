@@ -2,11 +2,6 @@
 
 #include "RTClothStructures.h"
 
-#include "Math/FRTSparseMatrix.h"
-#include "FRTShearCondition.h"
-#include "FRTStretchCondition.h"
-#include "FRTBendCondition.h"
-
 #include <memory>
 
 #include "FRTClothSolver.h"
@@ -186,4 +181,6 @@ protected:
 
 	// Gravity
 	FVector Gravity = {0, 0, 0};
+
+	TArray<FVector> ExternalForces;
 };

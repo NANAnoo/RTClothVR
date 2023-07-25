@@ -65,13 +65,33 @@ struct FClothTriangleStaticProperties
 		dwvdXScalar[2] = du1 / d;
 	}
 	
-	int ID = 0; 
-	int V_Inx[3];
-	float du1, dv1, du2, dv2, a, d;
+	int ID;
+	int V_Inx[3]; // indices of triangles
+	float du1, dv1, du2, dv2;
+
+	float a; // area of triangle in UV space
+	float d; // du1 * dv2 - du2 * dv1
 	
 	float dwudXScalar[3];
 	float dwvdXScalar[3];
 };
+
+static const float Q_rsqrt( float number )
+{
+	uint32_t i;
+	float x2, y;
+	const float threehalfs = 1.5F;
+
+	x2 = number * 0.5F;
+	y  = number;
+	memcpy(&i, &y, sizeof(float));// evil floating point bit level hacking
+	i  = 0x5f3759df - ( i >> 1 );               // what the fuck?
+	memcpy(&y, &i, sizeof(float));
+	y  = y * ( threehalfs - ( x2 * y * y ) );   // 1st iteration
+	y  = y * ( threehalfs - ( x2 * y * y ) );   // 2nd iteration, this can be removed
+
+	return y;
+}
 
 // computed only once
 struct FClothTriangleProperties : public FClothTriangleStaticProperties
@@ -104,8 +124,8 @@ public:
 		// trangle tangents in reference directions:
 		wu = ((P1 - P0) * dv2 - (P2 - P0) * dv1) / d;
 		wv = (-(P1 - P0) * du2 + (P2 - P0) * du1) / d;
-		wuNorm = wu.Size();
-		wvNorm = wv.Size();
+		wuNorm = 1.0f / Q_rsqrt(wu[0] * wu[0] + wu[1] * wu[1] +wu[2] * wu[2]);
+		wvNorm = 1.0f / Q_rsqrt(wv[0] * wv[0] + wv[1] * wv[1] +wv[2] * wv[2]);
 	}
 };
 
@@ -145,7 +165,7 @@ struct FAutoTimer
 	void Tick(FString const& Desc)
 	{
 		double const Current = FPlatformTime::Seconds() * 1000.f;
-		UE_LOG(LogTemp, Warning, TEXT("[%s :]%s Cost %f ms"), *Text, *Desc, Current - PrevTime);
+		UE_LOG(LogTemp, Warning, TEXT("[%s :] %s Cost %f ms"), *Text, *Desc, Current - PrevTime);
 		PrevTime = Current;
 	}
 
@@ -160,4 +180,30 @@ private:
 	FString Text;
 };
 
+template<unsigned int MaxNum>
+class FRTDebugLogger : public TThreadSingleton<FRTDebugLogger<MaxNum>>
+{
+public:
+	void Record(FVector const&Vec)
+	{
+		if (MaxNum > Data.Num())
+			Data.Add(Vec);
+		else if (!Logged)
+		{
+			Print();
+			Logged = true;
+		}
+	}
+	void Print() const
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Recorded Data:"));
+		for (auto &v : Data)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("%f, %f, %f"), v[0], v[1], v[2]);
+		}
+	}
+private:
+	TArray<FVector> Data;
+	bool Logged = false;
+};
 

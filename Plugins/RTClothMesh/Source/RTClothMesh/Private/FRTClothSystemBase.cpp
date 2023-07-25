@@ -36,6 +36,7 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 {
 	Mesh = AMesh;
     Masses.SetNumZeroed(Mesh->Positions.Num());
+    ExternalForces.SetNumZeroed(Mesh->Positions.Num());
 	MakeDirectedEdgeModel();
     // update masses
     for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)

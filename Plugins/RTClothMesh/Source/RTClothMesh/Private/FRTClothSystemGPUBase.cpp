@@ -3,9 +3,22 @@
 #include "FStretchShearConditionCS.h"
 #include "FLocalForceAssemplerCS.h"
 #include "FVerletIntegratorCS.h"
+#include "FRTBendForceCS.h"
 #include "FVecCopyCS.h"
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRTClothSimulationParameters, "RTClothMaterialUB");
+
+template<typename E>
+TArray<E> GetBufferData(FRTComputeBuffer<E> &Buffer)
+{
+	TArray<E> result;
+	result.SetNumZeroed(Buffer.Num());
+	const void *data = RHILockStructuredBuffer(Buffer.RHI, 0, Buffer.GetDataSize(), RLM_ReadOnly);
+	memcpy(result.GetData(), data, Buffer.GetDataSize());
+	RHIUnlockStructuredBuffer(Buffer.RHI);
+
+	return result;
+}
 
 void FRTClothSystemGPUBase::PrepareSimulation()
 {
@@ -16,6 +29,8 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 	GlobalForces.SetNum(Mesh->Positions.Num());
 	Pre_Positions.Reserve(this->Mesh->Positions.Num());
 	Positions.Reserve(this->Mesh->Positions.Num());
+	InvMasses.Reserve(this->Mesh->Positions.Num());
+	__Temp.SetNum(this->Mesh->Positions.Num());
 	TArray<TArray<int>> SubForceRefsMap;
 	SubForceRefsMap.SetNumZeroed(this->Mesh->Positions.Num());
 	for (int32 i = 0; i < this->Mesh->Indices.Num() / 3; i ++)
@@ -47,6 +62,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 	PreSumOfRefIndices.Add(0);
 	for (int i = 0; i < Mesh->Positions.Num(); i ++)
 	{
+		InvMasses.Add(1.0f / Masses[i]);
 		Pre_Positions.Add(Mesh->Positions[i]);
 		Positions.Add(Mesh->Positions[i]);
 		PreSum += SubForceRefsMap[i].Num();
@@ -55,10 +71,9 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		{
 			SubForceIndices.Add(id);
 		}
-		VertMasses.Add(Masses[i]);
 		if (Constraints.Contains(i))
 		{
-			ConstraintMap.Add(ConstraintID ++);
+			ConstraintMap.Add(3 * (ConstraintID ++));
 			auto &C = Constraints[i];
 			ConstraintData.Add({C[0][0], C[0][1], C[0][2]});
 			ConstraintData.Add({C[1][0], C[1][1], C[1][2]});
@@ -68,6 +83,62 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 			ConstraintMap.Add(0);
 		}
 	}
+
+	// set up bend conditions, iterate within all triangle pairs:
+	uint32 PairNum = 0;
+	for (auto const E : other_half_of_edge)
+	{
+		PairNum += (E != UNKNOWN_HALF_EDGE);
+	}
+	uint32 const Num_BendConditions = PairNum / 2;
+	Bend_Conditions.Reserve(Num_BendConditions * 4);
+	SharedEdgeUVLengths.Reserve(Num_BendConditions);
+	Bend_SubForceIndices.Reserve(Num_BendConditions * 4);
+	Bend_PreSumOfRefIndices.Reserve(Masses.Num());
+	Bend_LocalForces.SetNum(Num_BendConditions * 4);
+
+	TSet<uint32> VisitedEdges;
+	for (auto &Refs : SubForceRefsMap)
+		Refs.Reset();
+	VisitedEdges.Reserve(other_half_of_edge.Num());
+	for (auto const Edge : other_half_of_edge)
+	{
+		if (Edge != UNKNOWN_HALF_EDGE && !VisitedEdges.Contains(Edge))
+		{
+			HalfEdgeRef const OtherE = otherHalfEdge(Edge);
+			if (!VisitedEdges.Contains(OtherE))
+			{
+				uint32 const V0 = toVertexIndexOfHalfEdge(nextHalfEdge(Edge));
+				uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
+				uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
+				uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
+				int const Bend_Condition_ID = 4 * Bend_Conditions.Num();
+				SubForceRefsMap[V0].Add(Bend_Condition_ID);
+				SubForceRefsMap[V1].Add(Bend_Condition_ID + 1);
+				SubForceRefsMap[V2].Add(Bend_Condition_ID + 2);
+				SubForceRefsMap[V3].Add(Bend_Condition_ID + 3);
+				Bend_Conditions.Add(V0);
+				Bend_Conditions.Add(V1);
+				Bend_Conditions.Add(V2);
+				Bend_Conditions.Add(V3);
+				VisitedEdges.Add(Edge);
+				VisitedEdges.Add(OtherE);
+				SharedEdgeUVLengths.Add((Mesh->TexCoords[V1] - Mesh->TexCoords[V2]).Size());
+			}
+		}
+	}
+	PreSum = 0;
+	Bend_PreSumOfRefIndices.Add(0);
+	for (int i = 0; i < Mesh->Positions.Num(); i ++)
+	{
+		PreSum += SubForceRefsMap[i].Num();
+		Bend_PreSumOfRefIndices.Add(PreSum);
+		for (auto id : SubForceRefsMap[i])
+		{
+			Bend_SubForceIndices.Add(id);
+		}
+	}
+	
 	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_PrepareSimulation)(
 	[this](FRHICommandList &CmdLists)
 	{
@@ -76,13 +147,29 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		LocalForces.InitRHI();
 		SubForceIndices.InitRHI();
 		PreSumOfRefIndices.InitRHI();
-		VertMasses.InitRHI();
+		InvMasses.InitRHI();
 		ConstraintMap.InitRHI();
 		ConstraintData.InitRHI();
 		Pre_Positions.InitRHI();
 		GlobalForces.InitRHI();
 		Positions.InitRHI();
-		// create uniform buffer
+		Bend_Conditions.InitRHI();
+		Bend_LocalForces.InitRHI();
+		Bend_SubForceIndices.InitRHI();
+		Bend_PreSumOfRefIndices.InitRHI();
+		SharedEdgeUVLengths.InitRHI();
+		__Temp.InitRHI();
+	});
+}
+
+
+void FRTClothSystemGPUBase::TickOnce(float Duration)
+{
+	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_TickOnce)(
+	[this, Duration](FRHICommandList &_)
+	{
+		auto &RHICommands = GetImmediateCommandList_ForRenderCommand();
+		// set up uniform data
 		SimParam.D_Bend = M_Material.D_Bend;
 		SimParam.D_Shear = M_Material.D_Shear;
 		SimParam.D_Stretch = M_Material.D_Stretch;
@@ -91,111 +178,106 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		SimParam.K_Stretch = M_Material.K_Stretch;
 		SimParam.Rest_U = M_Material.Rest_U;
 		SimParam.Rest_V = M_Material.Rest_V;
-	});
-}
-
-
-void FRTClothSystemGPUBase::TickOnce(float Duration)
-{
-	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_TickOnce)(
-	[this, Duration](FRHICommandList &RHICommands)
-	{
 		SimParam.DT = Duration;
 		SimParam.ExternalForce = Gravity;
 		auto const SimParamUBO = FRTClothSimulationParameters::CreateUniformBuffer(SimParam, UniformBuffer_SingleFrame);
-		TArray<FVector> AssembledForces;
-		AssembledForces.SetNumZeroed(Mesh->Positions.Num());
-		{	// First Pass, update force
-			TShaderMapRef<FStretchShearConditionCS> const SSForceCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-			FRHIComputeShader* CS = SSForceCSRef.GetComputeShader();
-			
-			RHICommands.SetShaderUniformBuffer(CS, SSForceCSRef->SimParams.GetBaseIndex(), SimParamUBO);
-			RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->ConditionBasis.GetBaseIndex(), ConditionBasis.SRV);
-			RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->Velocities.GetBaseIndex(), Velocities.SRV);
-			RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->Positions.GetBaseIndex(), Positions.SRV);
-			RHICommands.SetUAVParameter(CS, SSForceCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
-			RHICommands.SetComputeShader(CS);
-			DispatchComputeShader(RHICommands, SSForceCSRef, ConditionBasis.Num() / 16 + 1, 1, 1);
-
-			// //
-			// TArray<FVector> result;
-			// result.SetNumUninitialized(LocalForces.Num());
-			// auto const* data = RHILockStructuredBuffer(LocalForces.RHI, 0,  LocalForces.GetDataSize(), RLM_ReadOnly);
-			// FMemory::Memcpy(result.GetData(), data, LocalForces.GetDataSize());		
-			// RHIUnlockStructuredBuffer(LocalForces.RHI);
-			//
-			// for (int i = 0; i < Mesh->Positions.Num(); i ++)
-			// {
-			// 	int StartIndex = PreSumOfRefIndices[i];
-			// 	int EndIndex = PreSumOfRefIndices[i + 1];
-			//
-			// 	FVector Force = FVector(0, 0, 0);
-			// 	for (int Index = StartIndex; Index < EndIndex; Index ++)
-			// 	{
-			// 		int LocalID = SubForceIndices[Index];
-			// 		Force += result[LocalID];
-			// 	}
-			// 	AssembledForces[i] = Force;
-			// }
-		}
-		{
-			// Second Pass, Assemble Forces
-			TShaderMapRef<FLocalForceAssemplerCS> const ForceAssembleCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-			FRHIComputeShader* CS = ForceAssembleCSRef.GetComputeShader();
-			
-			RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
-			RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
-			RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), PreSumOfRefIndices.SRV);
-			RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), SubForceIndices.SRV);
-			
-			RHICommands.SetComputeShader(CS);
-			DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
-
-			// TArray<FVector> result;
-			// result.SetNumUninitialized(Masses.Num());
-			// auto const* data = RHILockStructuredBuffer(GlobalForces.RHI, 0,  GlobalForces.GetDataSize(), RLM_ReadOnly);
-			// FMemory::Memcpy(result.GetData(), data, GlobalForces.GetDataSize());		
-			// RHIUnlockStructuredBuffer(GlobalForces.RHI);
-		}
-		{
-			// Third Pass, update Positions
-			TShaderMapRef<FVerletIntegratorCS> const VerletCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-			FRHIComputeShader* CS = VerletCSRef.GetComputeShader();
-
-			RHICommands.SetShaderUniformBuffer(CS, VerletCSRef->SimParams.GetBaseIndex(), SimParamUBO);
-			RHICommands.SetUAVParameter(CS, VerletCSRef->Velocities.GetBaseIndex(), Velocities.UAV);
-			RHICommands.SetUAVParameter(CS, VerletCSRef->Pre_Positions.GetBaseIndex(), Pre_Positions.UAV);
-			RHICommands.SetUAVParameter(CS, VerletCSRef->Positions.GetBaseIndex(), Positions.UAV);
-			RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->Forces.GetBaseIndex(), GlobalForces.SRV);
-			RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->Masses.GetBaseIndex(), VertMasses.SRV);
-			RHICommands.SetComputeShader(CS);
-			
-			DispatchComputeShader(RHICommands, VerletCSRef, Masses.Num() / 16 + 1, 1, 1);
-		}
+		
+		SetupExternalForces_RenderThread();
+		UpdateStretchAndShearForce_RenderThread(SimParamUBO, RHICommands);
+		UpdateBendForce_RenderThread(SimParamUBO, RHICommands);
+		AssembleForce(RHICommands);
+		VerletIntegration_RenderThread(SimParamUBO, RHICommands);
 	});
+}
+
+void FRTClothSystemGPUBase::UpdateStretchAndShearForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
+{
+	TShaderMapRef<FStretchShearConditionCS> const SSForceCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = SSForceCSRef.GetComputeShader();
+	RHICommands.SetShaderUniformBuffer(CS, SSForceCSRef->SimParams.GetBaseIndex(), UBO);
+	RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->ConditionBasis.GetBaseIndex(), ConditionBasis.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->Velocities.GetBaseIndex(), Velocities.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, SSForceCSRef->Positions.GetBaseIndex(), Positions.SRV);
+	RHICommands.SetUAVParameter(CS, SSForceCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
+	RHICommands.SetComputeShader(CS);
+	DispatchComputeShader(RHICommands, SSForceCSRef, ConditionBasis.Num() / 16 + 1, 1, 1);
+}
+
+void FRTClothSystemGPUBase::UpdateBendForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
+{
+	// second pass, bend forces
+	TShaderMapRef<FRTBendForceCS> const BendForcesCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = BendForcesCSRef.GetComputeShader();
+			
+	RHICommands.SetShaderUniformBuffer(CS, BendForcesCSRef->SimParams.GetBaseIndex(), UBO);
+	RHICommands.SetShaderResourceViewParameter(CS, BendForcesCSRef->BendConditions.GetBaseIndex(), Bend_Conditions.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, BendForcesCSRef->SharedEdgeLengths.GetBaseIndex(), SharedEdgeUVLengths.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, BendForcesCSRef->Velocities.GetBaseIndex(), Velocities.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, BendForcesCSRef->Positions.GetBaseIndex(), Positions.SRV);
+	RHICommands.SetUAVParameter(CS, BendForcesCSRef->LocalForces.GetBaseIndex(), Bend_LocalForces.UAV);
+	RHICommands.SetComputeShader(CS);
+			
+	DispatchComputeShader(RHICommands, BendForcesCSRef, SharedEdgeUVLengths.Num() / 16 + 1, 1, 1);
+}
+
+void FRTClothSystemGPUBase::AssembleForce(FRHICommandList &RHICommands) const
+{
+	TShaderMapRef<FLocalForceAssemplerCS> const ForceAssembleCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = ForceAssembleCSRef.GetComputeShader();
+	// Stretch and shear
+	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
+	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
+	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), PreSumOfRefIndices.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), SubForceIndices.SRV);
+			
+	RHICommands.SetComputeShader(CS);
+	DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
+	// Bend
+	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), Bend_LocalForces.UAV);
+	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
+	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), Bend_PreSumOfRefIndices.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), Bend_SubForceIndices.SRV);
+			
+	RHICommands.SetComputeShader(CS);
+	DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
+}
+
+void FRTClothSystemGPUBase::VerletIntegration_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
+{
+	// final Pass, update Positions
+	TShaderMapRef<FVerletIntegratorCS> const VerletCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = VerletCSRef.GetComputeShader();
+
+	RHICommands.SetShaderUniformBuffer(CS, VerletCSRef->SimParams.GetBaseIndex(), UBO);
+	RHICommands.SetUAVParameter(CS, VerletCSRef->Velocities.GetBaseIndex(), Velocities.UAV);
+	RHICommands.SetUAVParameter(CS, VerletCSRef->Pre_Positions.GetBaseIndex(), Pre_Positions.UAV);
+	RHICommands.SetUAVParameter(CS, VerletCSRef->Positions.GetBaseIndex(), Positions.UAV);
+	RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->Forces.GetBaseIndex(), GlobalForces.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->InvMasses.GetBaseIndex(), InvMasses.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->ConstraintMap.GetBaseIndex(), ConstraintMap.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, VerletCSRef->ConstraintData.GetBaseIndex(), ConstraintData.SRV);
+	RHICommands.SetComputeShader(CS);
+			
+	DispatchComputeShader(RHICommands, VerletCSRef, Masses.Num() / 16 + 1, 1, 1);
+}
+
+void FRTClothSystemGPUBase::SetupExternalForces_RenderThread()
+{
+	for (int i = 0; i < Masses.Num(); i ++)
+		ExternalForces[i] = Gravity * Masses[i];
+	void *Data = RHILockStructuredBuffer(GlobalForces.RHI, 0, GlobalForces.GetDataSize(), RLM_WriteOnly);
+	memcpy(Data, ExternalForces.GetData(), GlobalForces.GetDataSize());
+	RHIUnlockStructuredBuffer(GlobalForces.RHI);
 }
 
 void FRTClothSystemGPUBase::UpdatePositionDataTo(FRTDynamicVertexBuffer& DstBuffer)
 {
-	check(IsInRenderingThread());
-	
-	FAutoTimer Ti("Copy");
-
-	// auto &RHICommands = GetImmediateCommandList_ForRenderCommand();
-	// TShaderMapRef<FVecCopyCS> const CopyCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
-	// FRHIComputeShader* CS = CopyCSRef.GetComputeShader();
-	//
-	// RHICommands.SetShaderResourceViewParameter(CS, CopyCSRef->InVec.GetBaseIndex(), Positions.SRV);
-	// RHICommands.SetUAVParameter(CS, CopyCSRef->OutVec.GetBaseIndex(), DstBuffer.GetPositionUAV());
-	//
-	// RHICommands.SetComputeShader(CS);
-	// DispatchComputeShader(RHICommands, CopyCSRef, Masses.Num() / 16 + 1, 1, 1);
-
+	//check(IsInRenderingThread());
 	auto const* data = RHILockStructuredBuffer(Positions.RHI, 0,  Positions.GetDataSize(), RLM_ReadOnly);
 	auto * data2 = RHILockVertexBuffer(DstBuffer.VertexBufferRHI, 0,  DstBuffer.GetDataSize(), RLM_WriteOnly);
 	FMemory::Memcpy(data2, data, Positions.GetDataSize());	
 	RHIUnlockVertexBuffer(DstBuffer.VertexBufferRHI);
-	RHIUnlockStructuredBuffer(Positions.RHI);	
+	RHIUnlockStructuredBuffer(Positions.RHI);
 }
 
 FRTClothSystemGPUBase::~FRTClothSystemGPUBase()

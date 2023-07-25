@@ -57,7 +57,7 @@ void StretchForces(FTriangleCondition con, float3 wu, float3 wv, float wu_Norm, 
 	}
 }
 
-void ShearForces(FTriangleCondition con, float3 wu, float3 wv, float wu_Norm, float wv_Norm) {
+void ShearForces(FTriangleCondition con, float3 wu, float3 wv) {
 	float C = con.a * dot(wu, wv);
 	float3 dCdX[3];
 	for (int i = 0; i < 3; i ++)
@@ -70,14 +70,10 @@ void ShearForces(FTriangleCondition con, float3 wu, float3 wv, float wu_Norm, fl
 	// forces
 	for (int i = 0; i < 3; i ++)
 	{
-		// f = -dE/dx = - C dC/dx
-		float3 F = - (SimParams.K_Shear * C) * dCdX[i];
-
-		// d = -d * dC/dt * dC/dx:
-		F -= (SimParams.D_Shear * dCdT) * dCdX[i];
-
+		// f = -dE/dx = - k * C * dC/dx
+		// d = -d * dC/dt * dC/dx
 		// store forces in a temporary vector
-		LocalForces[con.ID + i] += F;
+		LocalForces[con.ID + i] -= (SimParams.K_Shear * C + SimParams.D_Shear * dCdT) * dCdX[i];
 	}
 }
 
@@ -103,5 +99,5 @@ void UpdateForces(uint3 ThreadId : SV_DispatchThreadID)
 
 	// update forces
 	StretchForces(Con, wu, wv, wuNorm, wvNorm);
-	ShearForces(Con, wu, wv, wuNorm, wvNorm);
+	ShearForces(Con, wu, wv);
 }

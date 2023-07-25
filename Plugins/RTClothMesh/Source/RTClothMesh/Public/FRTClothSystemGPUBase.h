@@ -34,6 +34,7 @@ template <typename T>
 class FRTComputeBuffer
 {
 public:
+	using ElementType = T;
 	int Num() const {return Data.Num();}
 	void Reserve(int Number)
 	{
@@ -92,6 +93,13 @@ public:
 	virtual void UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer) override;
 	
 protected:
+	void SetupExternalForces_RenderThread();
+
+	void UpdateStretchAndShearForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
+	void UpdateBendForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
+	void AssembleForce(FRHICommandList &RHICommands) const;
+	void VerletIntegration_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
+	
 	// setup runtime variables, before tick
 	virtual void PrepareSimulation() override;
 	
@@ -101,11 +109,19 @@ protected:
 	FRTComputeBuffer<FVector> GlobalForces;
 	FRTComputeBuffer<FVector> Pre_Positions;
 	FRTComputeBuffer<FVector> Positions;
-	FRTComputeBuffer<float> VertMasses;
+	FRTComputeBuffer<FVector> __Temp;
+	FRTComputeBuffer<float> InvMasses;
 	FRTComputeBuffer<int> PreSumOfRefIndices;
 	FRTComputeBuffer<int> SubForceIndices;
 	FRTComputeBuffer<int> ConstraintMap;
 	FRTComputeBuffer<FVector> ConstraintData;
+
+	// buffers for bend conditions
+	FRTComputeBuffer<uint32> Bend_Conditions;
+	FRTComputeBuffer<int> Bend_PreSumOfRefIndices;
+	FRTComputeBuffer<int> Bend_SubForceIndices;
+	FRTComputeBuffer<FVector> Bend_LocalForces;
+	FRTComputeBuffer<float> SharedEdgeUVLengths;
 	
 	FRTClothSimulationParameters SimParam;
 };

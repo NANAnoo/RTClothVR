@@ -130,8 +130,8 @@ void FRTStretchCondition::Update(const FVector& P0, const FVector& P1, const FVe
 	const FVector wv_a_wvNorm = wv * a_wvNorm;
 	for (uint32 i = 0; i < 3; i ++)
 	{
-		dC0dX[i] = dwudX[i] * wu_a_wuNorm;
-		dC1dX[i] = dwvdX[i] * wv_a_wvNorm;
+		dC0dX[i] = dwudXScalar[i] * wu_a_wuNorm;
+		dC1dX[i] = dwvdXScalar[i] * wv_a_wvNorm;
 	}
 
 	// condition value:

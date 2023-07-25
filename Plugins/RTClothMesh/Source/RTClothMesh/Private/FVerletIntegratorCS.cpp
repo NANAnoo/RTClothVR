@@ -9,8 +9,10 @@ FVerletIntegratorCS::FVerletIntegratorCS(const ShaderMetaType::CompiledShaderIni
 	Velocities.Bind(Initializer.ParameterMap, TEXT("Velocities"));
 	Pre_Positions.Bind(Initializer.ParameterMap, TEXT("Pre_Positions"));
 	Positions.Bind(Initializer.ParameterMap, TEXT("Positions"));
-	Masses.Bind(Initializer.ParameterMap, TEXT("Masses"));
+	InvMasses.Bind(Initializer.ParameterMap, TEXT("InvMasses"));
 	Forces.Bind(Initializer.ParameterMap, TEXT("Forces"));
+	ConstraintMap.Bind(Initializer.ParameterMap, TEXT("ConstraintMap"));
+	ConstraintData.Bind(Initializer.ParameterMap, TEXT("ConstraintData"));
 }
 
 void FVerletIntegratorCS::ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment)

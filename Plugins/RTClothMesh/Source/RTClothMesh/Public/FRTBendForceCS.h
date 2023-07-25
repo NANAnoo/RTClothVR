@@ -8,13 +8,13 @@
 
 #include <atomic>
 
-class FVerletIntegratorCS : public FGlobalShader
+class FRTBendForceCS : public FGlobalShader
 {
-	DECLARE_SHADER_TYPE(FVerletIntegratorCS, Global);
+	DECLARE_SHADER_TYPE(FRTBendForceCS, Global);
 
-	FVerletIntegratorCS() {}
+	FRTBendForceCS() {}
 
-	explicit FVerletIntegratorCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
+	explicit FRTBendForceCS(const ShaderMetaType::CompiledShaderInitializerType& Initializer);
 
 	static bool ShouldCompilePermutation(const FGlobalShaderPermutationParameters& Parameters) {
 		return GetMaxSupportedFeatureLevel(Parameters.Platform) >= ERHIFeatureLevel::SM5;
@@ -23,11 +23,9 @@ class FVerletIntegratorCS : public FGlobalShader
 	static void ModifyCompilationEnvironment(const FGlobalShaderPermutationParameters& Parameters, FShaderCompilerEnvironment& OutEnvironment);
 
 	LAYOUT_FIELD(FShaderUniformBufferParameter, SimParams);
+	LAYOUT_FIELD(FShaderResourceParameter, BendConditions);
+	LAYOUT_FIELD(FShaderResourceParameter, SharedEdgeLengths);
 	LAYOUT_FIELD(FShaderResourceParameter, Velocities);
-	LAYOUT_FIELD(FShaderResourceParameter, Pre_Positions);
 	LAYOUT_FIELD(FShaderResourceParameter, Positions);
-	LAYOUT_FIELD(FShaderResourceParameter, Forces);
-	LAYOUT_FIELD(FShaderResourceParameter, InvMasses);
-	LAYOUT_FIELD(FShaderResourceParameter, ConstraintMap);
-	LAYOUT_FIELD(FShaderResourceParameter, ConstraintData);
+	LAYOUT_FIELD(FShaderResourceParameter, LocalForces);
 };

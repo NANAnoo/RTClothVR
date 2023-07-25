@@ -1,0 +1,114 @@
+#pragma once
+#include </Engine/Public/Platform.ush>
+#include "FRTClothStructures.ush"
+
+uniform FClothSimulationParameterUB SimParams;
+
+// Bend Conditions : int {v0, v1, v2, v3}
+StructuredBuffer<uint> BendConditions; // length = 4 * Num of triangle pairs
+
+StructuredBuffer<float> SharedEdgeLengths; // length of shared edge in UV space.
+
+// velocities of cloth mesh
+StructuredBuffer<float3> Velocities;
+
+// positions of cloth mesh
+StructuredBuffer<float3> Positions;
+
+// local forces cache, four forces on the processed triangle pair
+RWStructuredBuffer<float3> LocalForces;
+
+[numthreads(16, 1, 1)]
+void UpdateForces(uint3 ThreadId : SV_DispatchThreadID)
+{
+	uint NumOfConditions, _;
+	BendConditions.GetDimensions(NumOfConditions, _);
+	// Z += 1
+	int Index = ThreadId.x;
+	if (NumOfConditions / 4 <= Index) return;
+
+	int V_idx[4] = {
+		BendConditions[4 * Index],
+		BendConditions[4 * Index + 1],
+		BendConditions[4 * Index + 2],
+		BendConditions[4 * Index + 3]
+	};
+
+	float L = SharedEdgeLengths[Index];
+
+	// read velocities and positions
+	float3 X0 = Positions[V_idx[0]];
+	float3 X1 = Positions[V_idx[1]];
+	float3 X2 = Positions[V_idx[2]];
+	float3 X3 = Positions[V_idx[3]];
+
+	float3 V0 = Velocities[V_idx[0]];
+	float3 V1 = Velocities[V_idx[1]];
+	float3 V2 = Velocities[V_idx[2]];
+	float3 V3 = Velocities[V_idx[3]];
+
+	// get edge vectors
+	float3 E01 = X1 - X0;
+	float3 E02 = X2 - X0;
+	float3 E32 = X2 - X3;
+	float3 E31 = X1 - X3;
+	float3 E21 = X1 - X2;
+
+	// get normalized edge vectors
+	float3 NE01 = normalize(E01);
+	float3 NE02 = normalize(E02);
+	float3 NE32 = normalize(E32);
+	float3 NE31 = normalize(E31);
+	float3 NE21 = normalize(E21);
+
+	// Get Cosine Value at each vertex
+	float c01 = dot(NE01, NE21);
+	float c02 = - dot(NE02, NE21);
+
+	float c11 = dot(NE21, NE31);
+	float c12 = - dot(NE32, NE21);
+
+	// normalized triangle normals:
+	float3 n0 = normalize(cross(NE21, NE01));
+	float3 n1 = normalize(cross(NE32, NE21));
+
+	// normalized bi-normals:
+	float3 b00 = normalize(NE01 - NE21 * dot(NE21, NE01));
+	float3 b01 = normalize(NE02 * dot(NE02, NE01)-NE01);
+	float3 b02 = normalize(NE01 * dot(NE01, NE02)-NE02);
+
+	float3 b13 = normalize(NE32 - NE21 * dot(NE21, NE32));
+	float3 b12 = normalize(NE31 * dot(NE31, NE32) - NE32);
+	float3 b11 = normalize(NE32 * dot(NE32, NE31) - NE31);
+
+	// triangle heights at each vertex
+	float d00 = dot(b00, E01);
+	float d01 = - dot(b01, E21);
+	float d02 = - dot(b02, E02);
+
+	float d11 = - dot(b11, E31);
+	float d12 = dot(b12, E21);
+	float d13 = dot(b13, E31);
+
+	// angle between triangles
+	float Theta = atan2(dot(n1, b00), dot(n0, n1));
+
+	// derivatives of theta with respect to the different vertex positions:
+	float dTheta_dX0 = -n0 / d00;
+	float dTheta_dX1 = c02 * n0 / d01 + c12 * n1 / d11;
+	float dTheta_dX2 = c01 * n0 / d02 + c11 * n1 / d12;
+	float dTheta_dX3 = -n1 / d13;
+
+	//  derivatives of theta with time
+	float dTheta_dt = dot(dTheta_dX0, V0) + dot(dTheta_dX1, V1) + dot(dTheta_dX2, V2) + dot(dTheta_dX3, V3);
+
+	// update forces to local forces
+	float KL = SimParams.K_Bend * L;
+	float DL = SimParams.D_Bend * L;
+
+	// forces and damping forces
+	LocalForces[4 * Index] = -(KL * Theta * dTheta_dX0 + DL * dTheta_dt * dTheta_dX0);
+	LocalForces[4 * Index + 1] = -(KL * Theta * dTheta_dX1 + DL * dTheta_dt * dTheta_dX1);
+	LocalForces[4 * Index + 2] = -(KL * Theta * dTheta_dX2 + DL * dTheta_dt * dTheta_dX2);
+	LocalForces[4 * Index + 3] = -(KL * Theta * dTheta_dX3 + DL * dTheta_dt * dTheta_dX3);
+}

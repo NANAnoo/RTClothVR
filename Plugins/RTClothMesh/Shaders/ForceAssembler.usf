@@ -28,5 +28,5 @@ void AssembleForce(uint3 ThreadId : SV_DispatchThreadID)
 		Force += LocalForces[LocalID];
 		LocalForces[LocalID] = float3(0, 0, 0);
 	}
-	Forces[Index] = Force;
+	Forces[Index] += Force;
 }

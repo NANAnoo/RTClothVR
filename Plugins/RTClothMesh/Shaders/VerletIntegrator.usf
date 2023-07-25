@@ -15,11 +15,11 @@ RWStructuredBuffer<float3> Positions;
 StructuredBuffer<float3> Forces;
 
 // Mass of cloth mesh
-StructuredBuffer<float> Masses;
+StructuredBuffer<float> InvMasses;
 
 // constraint map
-// StructuredBuffer<int> ConstraintMap;
-// StructuredBuffer<float3> ConstraintData;
+StructuredBuffer<int> ConstraintMap;
+StructuredBuffer<float3> ConstraintData;
 
 [numthreads(16, 1, 1)]
 void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
@@ -30,22 +30,21 @@ void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
 	int Index = ThreadId.x;
 	if (NumOfVertices <= Index) return;
 	
+	float3 Acc = (Forces[Index] * InvMasses[Index]);
 	// effective calculate constraint here
-	// int ConID = ConstraintMap[Index] * 3;
-	// float f_0 = dot(ConstraintData[ConID], Force);
-	// float f_1 = dot(ConstraintData[ConID + 1], Force);
-	// float f_2 = dot(ConstraintData[ConID + 2], Force);
-	// Force = float3(f_0, f_1, f_2);
-
-	float3 Acc = (Forces[Index] / Masses[Index]) + float3(0, -7, 0);
-	if (Index == 0 || Index == 38) Acc = float3(0, 0, 0);
+	int ConID = ConstraintMap[Index];
+	float A_0 = dot(ConstraintData[ConID], Acc);
+	float A_1 = dot(ConstraintData[ConID + 1], Acc);
+	float A_2 = dot(ConstraintData[ConID + 2], Acc);
+	Acc = float3(A_0, A_1, A_2);
+	
 	float3 CurrentPos = Positions[Index];
 	float3 PrePos = Pre_Positions[Index];
 	
 	// // update position using verlet
-	float3 NewPos = CurrentPos * 2 - PrePos + (0.01f * 0.01f ) * Acc;
+	float3 NewPos = CurrentPos * 2.f - PrePos + (SimParams.DT * SimParams.DT ) * Acc;
 	
-	Velocities[Index] = (NewPos - PrePos) / (2 * SimParams.DT);
+	Velocities[Index] += Acc * SimParams.DT;
 	Pre_Positions[Index] = CurrentPos;
 	Positions[Index] = NewPos;
 }

@@ -78,6 +78,7 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 {
 	FAutoTimer TI("FRTClothSystem_Verlet_CPU Tick");
 	Acceleration();
+	FRTDebugLogger<100>::Get().Record(Forces[2]);
 	TI.Tick("Acceleration");
 	// Update Positions
 	for (int32 i = 0; i < Masses.Num(); i ++)
@@ -90,7 +91,7 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 		auto const Pos_Old = Mesh->Positions[i];
 		Mesh->Positions[i] = 2 * Mesh->Positions[i] - Pre_Positions[i] + Acc * (Duration * Duration);
 		Pre_Positions[i] = Pos_Old;
-		Velocities[i] = (Mesh->Positions[i] - Pos_Old) / (Duration);
+		Velocities[i] += Duration * Acc;
 	}
 	TI.Tick("Update Positions");
 }

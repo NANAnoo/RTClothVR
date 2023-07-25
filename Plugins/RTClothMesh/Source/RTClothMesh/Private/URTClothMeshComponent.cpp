@@ -264,18 +264,21 @@ void URTClothMeshComponent::OnRegister()
 			FlushRenderingCommands();
 			// setup cloth solver system
 			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			// ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
 			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(0, {});
-			ClothSystem->AddConstraint(38, {});
-			ClothSystem->SetGravity({0, -7, 0});
+			ClothSystem->AddConstraint(1, {});
+			ClothSystem->AddConstraint(195, {});
+			ClothSystem->SetGravity({0, -10, 0});
 
 			ClothSystem->Init(ClothMesh,
-				{1.0, 0.5, 100, 25, 0.3, 0.001 , 95, 95, 1}
+				{
+					0.0001, 0.00,
+					100, 0.01,
+					0.0002, 0,
+					99, 99, 0.01}
 				);
-			MarkRenderDynamicDataDirty();
 		}
 	};
 }
@@ -445,8 +448,9 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	[this, DeltaTime](FRHICommandListImmediate &CmdList)
 	{
 		//ClothSystem->TickOnce(std::max(0.001f, std::min(DeltaTime, 0.05f)));
-		ClothSystem->TickOnce(0.01);
+		ClothSystem->TickOnce(1.f/120.f);
 	});
+	FlushRenderingCommands();
 	
 	// Need to send new data to render thread
 	MarkRenderDynamicDataDirty();
