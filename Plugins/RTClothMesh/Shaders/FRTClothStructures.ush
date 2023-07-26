@@ -38,5 +38,5 @@ struct FClothSimulationParameterUB
 
 	// simulation parameters
 	float DT; // duration
-	float3 ExternalForce;
+	float InitTheta;
 };

@@ -91,7 +91,7 @@ void UpdateForces(uint3 ThreadId : SV_DispatchThreadID)
 	float d13 = dot(b13, E31);
 
 	// angle between triangles
-	float Theta = atan2(dot(n1, b00), dot(n0, n1));
+	float Theta = atan2(dot(n1, b00), dot(n0, n1)) - SimParams.InitTheta;
 
 	// derivatives of theta with respect to the different vertex positions:
 	float3 dTheta_dX[4];

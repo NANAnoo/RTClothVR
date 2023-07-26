@@ -62,7 +62,7 @@ void FRTBendCondition::UpdateCondition(
 	d13 = b13 | E31;
 
 	// angle between triangles
-	Theta = atan2f(n1 | b00, n0 | n1);
+	Theta = atan2f(n1 | b00, n0 | n1) - Theta_0;
 
 	// derivatives of theta with respect to the different vertex positions:
 	dTheta_dX0 = -n0 / d00;

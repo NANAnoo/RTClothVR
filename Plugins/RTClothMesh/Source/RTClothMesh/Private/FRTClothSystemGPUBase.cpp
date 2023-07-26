@@ -179,7 +179,7 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		SimParam.Rest_U = M_Material.Rest_U;
 		SimParam.Rest_V = M_Material.Rest_V;
 		SimParam.DT = Duration;
-		SimParam.ExternalForce = Gravity;
+		SimParam.InitTheta = M_Material.InitTheta;
 		auto const SimParamUBO = FRTClothSimulationParameters::CreateUniformBuffer(SimParam, UniformBuffer_SingleFrame);
 		
 		SetupExternalForces_RenderThread();

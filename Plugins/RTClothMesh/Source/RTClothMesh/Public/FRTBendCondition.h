@@ -6,8 +6,8 @@
 class FRTBendCondition : public FRTEnergyCondition
 {
 public:
-	FRTBendCondition(uint32 P0, uint32 P1, uint32 P2, uint32 P3) :
-	V_idx{P0, P1, P2, P3}
+	FRTBendCondition(uint32 P0, uint32 P1, uint32 P2, uint32 P3, float InitTheta = 0) :
+	V_idx{P0, P1, P2, P3}, Theta_0(InitTheta)
 	{
 		
 	}
@@ -32,6 +32,7 @@ private:
 	uint32 V_idx[4];
 	float L = 0;
 	float Theta = 0;
+	float Theta_0 = 0;
 	float dTheta_dt = 0;
 	FVector dTheta_dX0, dTheta_dX1, dTheta_dX2, dTheta_dX3;
 

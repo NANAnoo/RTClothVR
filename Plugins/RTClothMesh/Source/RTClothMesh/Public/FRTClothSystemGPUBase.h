@@ -25,8 +25,9 @@ SHADER_PARAMETER(float, Rest_V)
 
 // duration
 SHADER_PARAMETER(float, DT)
-// external force
-SHADER_PARAMETER(FVector, ExternalForce)
+
+// bend initial angle
+SHADER_PARAMETER(float, InitTheta)
 
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 

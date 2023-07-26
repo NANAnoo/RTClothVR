@@ -1,13 +1,18 @@
 ﻿#include "FRTClothSystem_ImplicitIntegration_CPU.h"
 
+DECLARE_STATS_GROUP(TEXT("RTCloth"), STATGROUP_RTCloth, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST, STATGROUP_RTCloth);
+DECLARE_CYCLE_STAT(TEXT("ForcesAndDerivatives"), ForcesAndDerivatives,STATGROUP_RTCloth);
+DECLARE_CYCLE_STAT(TEXT("Solve Linear Equation"), SolveLinearEquation,STATGROUP_RTCloth);
+
 void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
-    FAutoTimer TI("FRTClothSystem_ImplicitIntegration_CPU Tick");
+    SCOPE_CYCLE_COUNTER(TIME_COST);
     if (!IsFirstFrame)
     {
+        SCOPE_CYCLE_COUNTER(ForcesAndDerivatives)
         ForcesAndDerivatives();
     }
-    TI.Tick("ForcesAndDerivatives");
     IsFirstFrame = false;
     // build up equation for solver, A x = b
     // A = M -dfdx * dt * dt - dfdv * dt;
@@ -40,9 +45,10 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
     // solve equation
     TArray<float> dV;
     dV.SetNumZeroed(Velocity.Num() * 3);
-    TI.Tick("Prepare equations");
-    Solver->Solve(A, B, dV);
-    TI.Tick("Solve equations");
+    {
+        SCOPE_CYCLE_COUNTER(SolveLinearEquation)
+        Solver->Solve(A, B, dV);
+    }
     // update position
     for (int32 i = 0; i < Velocity.Num(); i ++)
     {
@@ -50,7 +56,6 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
         Velocity[i] += DV;
         Mesh->Positions[i] += Duration * Velocity[i];
     }
-    TI.Tick("Update positions");
 }
 
 void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
@@ -128,7 +133,7 @@ void FRTClothSystem_ImplicitIntegration_CPU::PrepareSimulation()
                 uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
                 uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
                 uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
-                BendConditions.Add({V0, V1, V2, V3});
+                BendConditions.Add({V0, V1, V2, V3, M_Material.InitTheta});
                 VisitedEdges.Add(Edge);
                 VisitedEdges.Add(OtherE);
             }

@@ -61,7 +61,7 @@ void FRTClothSystem_Verlet_CPU::PrepareSimulation()
 				uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
 				uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
 				uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
-				BendConditions.Add({V0, V1, V2, V3});
+				BendConditions.Add({V0, V1, V2, V3, M_Material.InitTheta});
 				VisitedEdges.Add(Edge);
 				VisitedEdges.Add(OtherE);
 			}

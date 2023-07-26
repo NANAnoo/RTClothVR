@@ -29,6 +29,9 @@ struct FRTClothPhysicalMaterial
 
 	// mass per area for each triangle
 	Real Density;
+
+	// Initial theta for bend
+	Real InitTheta;
 };
 
 class FRTClothSystemBase

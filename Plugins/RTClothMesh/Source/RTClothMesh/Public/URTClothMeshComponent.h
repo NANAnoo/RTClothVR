@@ -45,6 +45,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Rest_V", ClampMin="0", ClampMax="1000"))
 	float Rest_V = 100;
+	
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="InitTheta", ClampMin="-180", ClampMax="180"))
+	float InitTheta = 0;
 
 private:
 	// setup cloth mesh and cloth system in RenderThread
