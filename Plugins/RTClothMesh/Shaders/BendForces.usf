@@ -22,10 +22,10 @@ RWStructuredBuffer<float3> LocalForces;
 void UpdateForces(uint3 ThreadId : SV_DispatchThreadID)
 {
 	uint NumOfConditions, _;
-	BendConditions.GetDimensions(NumOfConditions, _);
+	SharedEdgeLengths.GetDimensions(NumOfConditions, _);
 	// Z += 1
 	int Index = ThreadId.x;
-	if (NumOfConditions / 4 <= Index) return;
+	if (NumOfConditions <= Index) return;
 
 	int V_idx[4] = {
 		BendConditions[4 * Index],
@@ -94,21 +94,22 @@ void UpdateForces(uint3 ThreadId : SV_DispatchThreadID)
 	float Theta = atan2(dot(n1, b00), dot(n0, n1));
 
 	// derivatives of theta with respect to the different vertex positions:
-	float dTheta_dX0 = -n0 / d00;
-	float dTheta_dX1 = c02 * n0 / d01 + c12 * n1 / d11;
-	float dTheta_dX2 = c01 * n0 / d02 + c11 * n1 / d12;
-	float dTheta_dX3 = -n1 / d13;
+	float3 dTheta_dX[4];
+	dTheta_dX[0] = -n0 / d00;
+	dTheta_dX[1] = c02 * n0 / d01 + c12 * n1 / d11;
+	dTheta_dX[2] = c01 * n0 / d02 + c11 * n1 / d12;
+	dTheta_dX[3] = -n1 / d13;
 
 	//  derivatives of theta with time
-	float dTheta_dt = dot(dTheta_dX0, V0) + dot(dTheta_dX1, V1) + dot(dTheta_dX2, V2) + dot(dTheta_dX3, V3);
+	float dTheta_dt = dot(dTheta_dX[0], V0) + dot(dTheta_dX[1], V1) + dot(dTheta_dX[2], V2) + dot(dTheta_dX[3], V3);
 
 	// update forces to local forces
 	float KL = SimParams.K_Bend * L;
 	float DL = SimParams.D_Bend * L;
 
 	// forces and damping forces
-	LocalForces[4 * Index] = -(KL * Theta * dTheta_dX0 + DL * dTheta_dt * dTheta_dX0);
-	LocalForces[4 * Index + 1] = -(KL * Theta * dTheta_dX1 + DL * dTheta_dt * dTheta_dX1);
-	LocalForces[4 * Index + 2] = -(KL * Theta * dTheta_dX2 + DL * dTheta_dt * dTheta_dX2);
-	LocalForces[4 * Index + 3] = -(KL * Theta * dTheta_dX3 + DL * dTheta_dt * dTheta_dX3);
+	for (int i = 0; i < 4; i ++)
+	{
+		LocalForces[4 * Index + i] = -(KL * Theta * dTheta_dX[i] + DL * dTheta_dt * dTheta_dX[i]);
+	}
 }

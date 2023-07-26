@@ -19,6 +19,32 @@ class URTClothMeshComponent : public UMeshComponent
 	GENERATED_UCLASS_BODY()
 
 public:
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="K_Stretch", ClampMin="0", ClampMax="1000"))
+	float K_Stretch = 100;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="D_Stretch", ClampMin="0", ClampMax="100"))
+	float D_Stretch = 6;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="K_Shear", ClampMin="0", ClampMax="1"))
+	float K_Shear = 0;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="D_Shear", ClampMin="0", ClampMax="1"))
+	float D_Shear = 0;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="K_Bend", ClampMin="0", ClampMax="100"))
+	float K_Bend = 0.1;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="D_Bend", ClampMin="0", ClampMax="100"))
+	float D_Bend = 0;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Density", ClampMin="0", ClampMax="1"))
+	float Density = 1;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Rest_U", ClampMin="0", ClampMax="1000"))
+	float Rest_U = 100;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Rest_V", ClampMin="0", ClampMax="1000"))
+	float Rest_V = 100;
 
 private:
 	// setup cloth mesh and cloth system in RenderThread

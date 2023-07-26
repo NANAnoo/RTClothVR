@@ -263,22 +263,23 @@ void URTClothMeshComponent::OnRegister()
 			}
 			FlushRenderingCommands();
 			// setup cloth solver system
-			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
+			ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
 			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
+			//ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(1, {});
-			ClothSystem->AddConstraint(195, {});
-			ClothSystem->SetGravity({0, -10, 0});
+			//ClothSystem->AddConstraint(1, {});
+			//ClothSystem->AddConstraint(195, {});
+			ClothSystem->SetGravity({0, 0, 0});
 
 			ClothSystem->Init(ClothMesh,
 				{
-					0.0001, 0.00,
-					100, 0.01,
-					0.0002, 0,
-					99, 99, 0.01}
+					K_Bend, D_Bend,
+					K_Stretch, D_Stretch,
+					K_Shear, D_Shear,
+					Rest_U, Rest_V, Density}
 				);
+			//FOnPropertyChanged
 		}
 	};
 }

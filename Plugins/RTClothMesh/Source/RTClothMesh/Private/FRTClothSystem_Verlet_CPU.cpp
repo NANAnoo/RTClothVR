@@ -78,7 +78,6 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 {
 	FAutoTimer TI("FRTClothSystem_Verlet_CPU Tick");
 	Acceleration();
-	FRTDebugLogger<100>::Get().Record(Forces[2]);
 	TI.Tick("Acceleration");
 	// Update Positions
 	for (int32 i = 0; i < Masses.Num(); i ++)

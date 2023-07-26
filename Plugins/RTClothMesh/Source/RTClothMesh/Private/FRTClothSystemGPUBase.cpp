@@ -112,7 +112,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 				uint32 const V1 = fromVertexIndexOfHalfEdge(Edge);
 				uint32 const V2 = toVertexIndexOfHalfEdge(Edge);
 				uint32 const V3 = toVertexIndexOfHalfEdge(nextHalfEdge(OtherE));
-				int const Bend_Condition_ID = 4 * Bend_Conditions.Num();
+				int const Bend_Condition_ID = Bend_Conditions.Num();
 				SubForceRefsMap[V0].Add(Bend_Condition_ID);
 				SubForceRefsMap[V1].Add(Bend_Condition_ID + 1);
 				SubForceRefsMap[V2].Add(Bend_Condition_ID + 2);
