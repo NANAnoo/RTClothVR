@@ -157,29 +157,6 @@ struct FClothConstraint
 	}
 };
 
-
-struct FAutoTimer
-{
-	explicit FAutoTimer(FString const& Name) : InitTime(FPlatformTime::Seconds() * 1000.f), PrevTime(InitTime), Text(Name) {}
-
-	void Tick(FString const& Desc)
-	{
-		double const Current = FPlatformTime::Seconds() * 1000.f;
-		UE_LOG(LogTemp, Warning, TEXT("[%s :] %s Cost %f ms"), *Text, *Desc, Current - PrevTime);
-		PrevTime = Current;
-	}
-
-	~FAutoTimer()
-	{
-		UE_LOG(LogTemp, Warning, TEXT("[%s :] Total Cost %f ms \n"), *Text, FPlatformTime::Seconds() * 1000.f - InitTime);
-	}
-	
-private:
-	double InitTime;
-	double PrevTime;
-	FString Text;
-};
-
 template<unsigned int MaxNum>
 class FRTDebugLogger : public TThreadSingleton<FRTDebugLogger<MaxNum>>
 {

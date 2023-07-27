@@ -29,6 +29,12 @@ SHADER_PARAMETER(float, DT)
 // bend initial angle
 SHADER_PARAMETER(float, InitTheta)
 
+// collision spring K
+SHADER_PARAMETER(float, K_Collision)
+
+// collision spring D
+SHADER_PARAMETER(float, D_Collision)
+
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 template <typename T>

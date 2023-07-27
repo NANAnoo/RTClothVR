@@ -1,5 +1,8 @@
 ﻿#include "FRTClothSystem_Verlet_CPU.h"
 
+DECLARE_STATS_GROUP(TEXT("RTCloth(Verlet)"), STATGROUP_RTCloth_Verlet, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Verlet, STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("GetAcceleration"), Acceleration_Verlet,STATGROUP_RTCloth_Verlet);
 
 void FRTClothSystem_Verlet_CPU::Acceleration()
 {
@@ -8,7 +11,8 @@ void FRTClothSystem_Verlet_CPU::Acceleration()
 	{
 		Forces[i] = Masses[i] * Gravity;
 	}
-
+	UpdateTriangleProperties(Mesh->Positions, Velocities);
+	AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
 	// calculate forces
 	for (auto &Con : StretchConditions)
 	{
@@ -76,9 +80,11 @@ void FRTClothSystem_Verlet_CPU::PrepareSimulation()
 
 void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 {
-	FAutoTimer TI("FRTClothSystem_Verlet_CPU Tick");
-	Acceleration();
-	TI.Tick("Acceleration");
+	SCOPE_CYCLE_COUNTER(TIME_COST_Verlet);
+	{
+		SCOPE_CYCLE_COUNTER(Acceleration_Verlet);
+		Acceleration();
+	}
 	// Update Positions
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
@@ -92,7 +98,6 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 		Pre_Positions[i] = Pos_Old;
 		Velocities[i] += Duration * Acc;
 	}
-	TI.Tick("Update Positions");
 }
 
 

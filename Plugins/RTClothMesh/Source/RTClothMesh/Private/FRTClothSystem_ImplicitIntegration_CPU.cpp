@@ -1,16 +1,16 @@
 ﻿#include "FRTClothSystem_ImplicitIntegration_CPU.h"
 
-DECLARE_STATS_GROUP(TEXT("RTCloth"), STATGROUP_RTCloth, STATCAT_Advanced);
-DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST, STATGROUP_RTCloth);
-DECLARE_CYCLE_STAT(TEXT("ForcesAndDerivatives"), ForcesAndDerivatives,STATGROUP_RTCloth);
-DECLARE_CYCLE_STAT(TEXT("Solve Linear Equation"), SolveLinearEquation,STATGROUP_RTCloth);
+DECLARE_STATS_GROUP(TEXT("RTCloth"), STATGROUP_RTCloth_Implicit, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Implicit, STATGROUP_RTCloth_Implicit);
+DECLARE_CYCLE_STAT(TEXT("ForcesAndDerivatives"), ForcesAndDerivatives_Implicit,STATGROUP_RTCloth_Implicit);
+DECLARE_CYCLE_STAT(TEXT("Solve Linear Equation"), SolveLinearEquation_Implicit,STATGROUP_RTCloth_Implicit);
 
 void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
-    SCOPE_CYCLE_COUNTER(TIME_COST);
+    SCOPE_CYCLE_COUNTER(TIME_COST_Implicit);
     if (!IsFirstFrame)
     {
-        SCOPE_CYCLE_COUNTER(ForcesAndDerivatives)
+        SCOPE_CYCLE_COUNTER(ForcesAndDerivatives_Implicit)
         ForcesAndDerivatives();
     }
     IsFirstFrame = false;
@@ -46,7 +46,7 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
     TArray<float> dV;
     dV.SetNumZeroed(Velocity.Num() * 3);
     {
-        SCOPE_CYCLE_COUNTER(SolveLinearEquation)
+        SCOPE_CYCLE_COUNTER(SolveLinearEquation_Implicit)
         Solver->Solve(A, B, dV);
     }
     // update position

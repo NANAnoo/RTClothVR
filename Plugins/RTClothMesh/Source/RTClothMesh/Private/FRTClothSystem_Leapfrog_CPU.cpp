@@ -1,5 +1,8 @@
 ﻿#include "FRTClothSystem_Leapfrog_CPU.h"
 
+DECLARE_STATS_GROUP(TEXT("RTCloth(leapfrog)"), STATGROUP_RTCloth_LeapFrog, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_LeapFrog, STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("GetAcceleration(leapfrog)"), Acceleration_LeapFrog, STATGROUP_RTCloth_LeapFrog);
 
 void FRTClothSystem_Leapfrog_CPU::Acceleration()
 {
@@ -80,7 +83,7 @@ void FRTClothSystem_Leapfrog_CPU::PrepareSimulation()
 
 void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 {
-	FAutoTimer TI("FRTClothSystem_Leapfrog_CPU Tick");
+	SCOPE_CYCLE_COUNTER(TIME_COST_LeapFrog)
 	// Update Velocity_Half
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
@@ -99,7 +102,11 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 	}
 
 	// Get new acc and update V_{i+1}
-	Acceleration();
+	{
+		SCOPE_CYCLE_COUNTER(Acceleration_LeapFrog);
+		Acceleration();
+	}
+	
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
 		auto const Acc = Forces[i] / Masses[i];
@@ -110,7 +117,6 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 		}
 		Velocities[i] = Velocities_Half[i] + (Duration / 2) * Pre_As[i];
 	}
-	TI.Tick("Update Positions");
 }
 
 

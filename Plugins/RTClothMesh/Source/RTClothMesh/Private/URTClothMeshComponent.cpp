@@ -264,26 +264,27 @@ void URTClothMeshComponent::OnRegister()
 			FlushRenderingCommands();
 			// setup cloth solver system
 			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
+			//ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(1, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
+			ClothSystem->AddConstraint(1, {});
 			for (int i = 0; i < ClothMesh->Positions.Num(); i ++)
 			{
 				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[1].Z)
 				{
-					ClothSystem->AddConstraint(i, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 1, 0}});
+					ClothSystem->AddConstraint(i, {});
 				}
 			}
-			ClothSystem->SetGravity({0, -980, 0});
+			ClothSystem->SetGravity({0, -100, 0});
 			 
 			ClothSystem->Init(ClothMesh,
 				{
 					K_Bend, D_Bend,
 					K_Stretch, D_Stretch,
 					K_Shear, D_Shear,
-					Rest_U, Rest_V, Density, InitTheta / 180 * PI}
+					Rest_U, Rest_V, Density, InitTheta / 180 * PI
+					,K_Collision,D_Collision}
 				);
 			//FOnPropertyChanged
 		}
@@ -442,7 +443,6 @@ void URTClothMeshComponent::SetupCloth_RenderThread(UStaticMesh *Mesh) const
 void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)
 {
 	Super::TickComponent(DeltaTime, TickType, ThisTickFunction);
-
 	// get static mesh and material
 	TArray<UStaticMeshComponent*> Components;
 	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
@@ -455,7 +455,7 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	[this, DeltaTime](FRHICommandListImmediate &CmdList)
 	{
 		//ClothSystem->TickOnce(std::max(0.001f, std::min(DeltaTime, 0.05f)));
-		ClothSystem->TickOnce(0.001f);
+		ClothSystem->TickOnce(0.005f);
 	});
 	FlushRenderingCommands();
 	// Need to send new data to render thread

@@ -1,0 +1,25 @@
+﻿#pragma once
+#include </Engine/Public/Platform.ush>
+
+// local forces cache, three forces on the processed triangle
+StructuredBuffer<int> Indices;
+StructuredBuffer<int> Pre_Positions;
+RWStructuredBuffer<int> Positions;
+RWStructuredBuffer<int> Velocities;
+
+[numthreads(16, 1, 1)]
+void CopyVec(uint3 ThreadId : SV_DispatchThreadID)
+{
+	uint NumOfVertices, _;
+	Positions.GetDimensions(NumOfVertices, _);
+
+	int Index = ThreadId.x;
+	if (NumOfVertices <= Index) return;
+
+	uint NumOfTriangles;
+	Indices.GetDimensions(NumOfTriangles, _);
+	for (int i = 0; i < NumOfTriangles; i ++)
+	{
+		
+	}
+}

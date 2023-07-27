@@ -2,6 +2,91 @@
 
 #include <unordered_map>
 
+
+#include <functional>
+
+struct AABB
+{
+    bool Contains(FVector const& Pos) const
+    {
+        return Pos[0] < Max[0] && Pos[0] > Min[0] &&
+           Pos[1] < Max[1] && Pos[1] > Min[1] &&
+           Pos[2] < Max[2] && Pos[2] > Min[2];
+    }
+    bool Intersect(AABB const&other) const
+    {
+        return Contains(other.Max) || Contains(other.Min) || other.Contains(Max) || other.Contains(Min);
+    }
+    AABB operator+(AABB const&Other)
+    {
+        AABB Result;
+        Result.Max[0] = std::max(Max[0], Other.Max[0]);
+        Result.Max[1] = std::max(Max[1], Other.Max[1]);
+        Result.Max[2] = std::max(Max[2], Other.Max[2]);
+
+        Result.Min[0] = std::min(Min[0], Other.Min[0]);
+        Result.Min[1] = std::min(Min[1], Other.Min[1]);
+        Result.Min[2] = std::min(Min[2], Other.Min[2]);
+
+        return Result;
+    }
+    FVector Max;
+    FVector Min;
+};
+
+template<typename T, typename AABB_builder>
+struct BVH_Node
+{
+    explicit BVH_Node(T const& Obj) : box(AABB_builder{}(Obj)), value(Obj)
+    {
+    } 
+    explicit BVH_Node(AABB const& Box)
+    {
+        box = Box;
+    }
+
+    static int BuildFrom(TArray<T> const&Objects, TArray<BVH_Node<T, AABB_builder>>&Result, int Begin, int End)
+    {
+        if (End == Begin)
+        {
+            BVH_Node NewNode(Objects[Begin]);
+            Result.Add(NewNode);
+        } else
+        {
+            int Mid = (Begin + End) >> 1;
+            int L = BuildFrom(Objects, Result, Begin, Mid);
+            int R = BuildFrom(Objects, Result, Mid + 1, End);
+            BVH_Node NewNode(Result[L].box + Result[R].box);
+            NewNode.L = L;
+            NewNode.R = R;
+            Result.Add(NewNode);
+        }
+        return Result.Num() - 1;
+    }
+    
+    void Intersect(FVector const&Pos, TArray<BVH_Node> const& Nodes, std::function<void(T const&Value)> const&Handler) const
+    {
+        if (box.Contains(Pos))
+        {
+            if (L == -1 && R == -1)
+            {
+                Handler(value);
+            } else
+            {
+                if (L >= 0)
+                    Nodes[L].Intersect(Pos, Nodes, Handler);
+                if (R >= 0)
+                    Nodes[R].Intersect(Pos, Nodes, Handler);
+            }
+            
+        }
+    }
+    int L = -1;
+    int R = -1;
+    AABB box;
+    T value;
+};
+
 void FRTClothSystemBase::Init (
 	std::shared_ptr<FClothRawMesh> const& AMesh,
 	FRTClothPhysicalMaterial<float> const& Material
@@ -34,10 +119,11 @@ void FRTClothSystemBase::UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer)
 
 void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 {
-	Mesh = AMesh;
+    Mesh = AMesh;
     Masses.SetNumZeroed(Mesh->Positions.Num());
     ExternalForces.SetNumZeroed(Mesh->Positions.Num());
-	MakeDirectedEdgeModel();
+    TriangleBoundingSpheres.SetNumZeroed(Mesh->Indices.Num());
+    MakeDirectedEdgeModel();
     // update masses
     for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)
     {
@@ -96,5 +182,73 @@ void FRTClothSystemBase::MakeDirectedEdgeModel()
                 other_half_of_edge[p->second] = to_edge_ref;
             }
         }
+    }
+}
+
+void FRTClothSystemBase::UpdateTriangleProperties(TArray<FVector> const&Positions, TArray<FVector> const&Velocities)
+{
+    for (int i = 0; i < Mesh->Indices.Num() / 3; i ++)
+    {
+        auto const F = getFaceAt(i);
+        auto P0 = Positions[F.vertex_index[0]];
+        auto P1 = Positions[F.vertex_index[1]];
+        auto P2 = Positions[F.vertex_index[2]];
+        auto Center = (P0 + P1 + P2) / 3;
+        float Len = (Center - P0).Size();
+        auto V = (Velocities[F.vertex_index[0]] +
+            Velocities[F.vertex_index[1]] +
+            Velocities[F.vertex_index[2]]) / 3;
+        TriangleBoundingSpheres[i] = {Center, Len, V, i};
+    }
+}
+
+void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities)
+{
+    struct FHitSphereToAABB
+    {
+        AABB operator()(FHitSphere const&Sphere) const
+        {
+            FVector const Diff(Sphere.Radius, Sphere.Radius, Sphere.Radius);
+            return {Sphere.Center + Diff, Sphere.Center - Diff};
+        }
+    };
+    // // build bvh tree
+    TArray<BVH_Node<FHitSphere, FHitSphereToAABB>> BVH_Tree;
+    BVH_Tree.Reserve(TriangleBoundingSpheres.Num() * 2);
+    int const Root = BVH_Node<FHitSphere, FHitSphereToAABB>::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
+    
+    for (int V = 0; V < Mesh->Positions.Num(); V ++)
+    {
+        auto P = Positions[V];
+        BVH_Tree[Root].Intersect(P, BVH_Tree, [this, P, V, &Forces, &Velocities](FHitSphere const&Sphere)
+        {
+            auto F = getFaceAt(Sphere.ID);
+            if (F.vertex_index[0] == V || F.vertex_index[1] == V || F.vertex_index[2] == V) return;
+            FVector const Center = Sphere.Center;
+            float const Len = Sphere.Radius;
+            auto C_P = P - Center;
+            auto const CenterV = Sphere.Velocity;
+            float const Dis = C_P.Size();
+            if (Dis < Len)
+            {
+                C_P.Normalize();
+                Forces[V] += Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
+            }
+        });
+        // for (int i = 0; i < TriangleBoundingSpheres.Num(); i ++)
+        // {
+        //     auto F = getFaceAt(i);
+        //     if (F.vertex_index[0] == V || F.vertex_index[1] == V || F.vertex_index[2] == V) continue;
+        //     FVector Center = TriangleBoundingSpheres[i].Center;
+        //     float Len = TriangleBoundingSpheres[i].Radius;
+        //     auto C_P = P - Center;
+        //     auto CenterV = TriangleBoundingSpheres[i].Velocity;
+        //     float Dis = C_P.Size();
+        //     if (Dis < Len)
+        //     {
+        //         C_P.Normalize();
+        //         Forces[V] += Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
+        //     }
+        // }
     }
 }

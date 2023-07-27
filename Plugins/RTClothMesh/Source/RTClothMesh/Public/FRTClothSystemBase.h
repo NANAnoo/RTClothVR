@@ -32,6 +32,10 @@ struct FRTClothPhysicalMaterial
 
 	// Initial theta for bend
 	Real InitTheta;
+
+	// Collision spring
+	Real K_Collision;
+	Real D_Collision;
 };
 
 class FRTClothSystemBase
@@ -169,9 +173,6 @@ protected:
 	// Make Directed Edge
 	FORCEINLINE void MakeDirectedEdgeModel();
 	// Directed Edge End
-
-	// update Mesh, rebuild Conditions
-	void _UpdateMesh(std::shared_ptr<FClothRawMesh> const&);
 	
 	FRTClothPhysicalMaterial<float> M_Material;
 	std::shared_ptr<FClothRawMesh> Mesh;
@@ -186,4 +187,22 @@ protected:
 	FVector Gravity = {0, 0, 0};
 
 	TArray<FVector> ExternalForces;
+	// center, radius
+
+	struct FHitSphere
+	{
+		FVector Center;
+		float Radius;
+		FVector Velocity;
+		int ID;
+	};
+	
+	TArray<FHitSphere> TriangleBoundingSpheres;
+
+	// update Mesh, rebuild Conditions
+	void _UpdateMesh(std::shared_ptr<FClothRawMesh> const&);
+
+	// update triangle parameters
+	void UpdateTriangleProperties(TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
+	void AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
 };
