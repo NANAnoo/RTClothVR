@@ -2,17 +2,11 @@
 
 DECLARE_STATS_GROUP(TEXT("RTCloth(Verlet)"), STATGROUP_RTCloth_Verlet, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Verlet, STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("Inner Collision"), Collision_Verlet,STATGROUP_RTCloth_Verlet);
 DECLARE_CYCLE_STAT(TEXT("GetAcceleration"), Acceleration_Verlet,STATGROUP_RTCloth_Verlet);
 
 void FRTClothSystem_Verlet_CPU::Acceleration()
 {
-	// set up gravity
-	for (int32 i = 0; i < Masses.Num(); i ++)
-	{
-		Forces[i] = Masses[i] * Gravity;
-	}
-	UpdateTriangleProperties(Mesh->Positions, Velocities);
-	AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
 	// calculate forces
 	for (auto &Con : StretchConditions)
 	{
@@ -81,6 +75,16 @@ void FRTClothSystem_Verlet_CPU::PrepareSimulation()
 void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 {
 	SCOPE_CYCLE_COUNTER(TIME_COST_Verlet);
+	// set up gravity
+	for (int32 i = 0; i < Masses.Num(); i ++)
+	{
+		Forces[i] = Masses[i] * Gravity;
+	}
+	{
+	 	SCOPE_CYCLE_COUNTER(Collision_Verlet);
+	 	UpdateTriangleProperties(Mesh->Positions, Velocities);
+	 	AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
+	}
 	{
 		SCOPE_CYCLE_COUNTER(Acceleration_Verlet);
 		Acceleration();

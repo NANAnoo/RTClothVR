@@ -264,9 +264,9 @@ void URTClothMeshComponent::OnRegister()
 			FlushRenderingCommands();
 			// setup cloth solver system
 			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			//ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
+			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
 			ClothSystem->AddConstraint(1, {});
 			for (int i = 0; i < ClothMesh->Positions.Num(); i ++)
@@ -457,7 +457,6 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 		//ClothSystem->TickOnce(std::max(0.001f, std::min(DeltaTime, 0.05f)));
 		ClothSystem->TickOnce(0.005f);
 	});
-	FlushRenderingCommands();
 	// Need to send new data to render thread
 	MarkRenderDynamicDataDirty();
 	UpdateComponentToWorld();
@@ -494,9 +493,9 @@ void URTClothMeshComponent::SendRenderDynamicData_Concurrent()
 			[this](FRHICommandListImmediate &CmdList)
 			{
 				auto const ProcProxy = static_cast<FClothMeshSceneProxy *>(SceneProxy);
-				if (ProcProxy)
+				if (ProcProxy &&ProcProxy->PositionBuffer().VertexBufferRHI.IsValid())
 				{
-					ClothSystem->UpdatePositionDataTo(ProcProxy->PositionBuffer());
+					ClothSystem->UpdatePositionDataTo(CmdList, ProcProxy->PositionBuffer());
 				}
 			}
 		);

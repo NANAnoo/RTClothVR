@@ -160,15 +160,15 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		SharedEdgeUVLengths.InitRHI();
 		__Temp.InitRHI();
 	});
+	FlushRenderingCommands();
 }
 
 
 void FRTClothSystemGPUBase::TickOnce(float Duration)
 {
 	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_TickOnce)(
-	[this, Duration](FRHICommandList &_)
+	[this, Duration](FRHICommandList &RHICommands)
 	{
-		auto &RHICommands = GetImmediateCommandList_ForRenderCommand();
 		// set up uniform data
 		SimParam.D_Bend = M_Material.D_Bend;
 		SimParam.D_Shear = M_Material.D_Shear;
@@ -187,6 +187,9 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		UpdateBendForce_RenderThread(SimParamUBO, RHICommands);
 		AssembleForce(RHICommands);
 		VerletIntegration_RenderThread(SimParamUBO, RHICommands);
+		auto const* data = RHILockStructuredBuffer(Positions.RHI, 0,  Positions.GetDataSize(), RLM_ReadOnly);
+		FMemory::Memcpy(Mesh->Positions.GetData(), data, Positions.GetDataSize());
+		RHIUnlockStructuredBuffer(Positions.RHI);
 	});
 }
 
@@ -270,19 +273,8 @@ void FRTClothSystemGPUBase::SetupExternalForces_RenderThread()
 	RHIUnlockStructuredBuffer(GlobalForces.RHI);
 }
 
-void FRTClothSystemGPUBase::UpdatePositionDataTo(FRTDynamicVertexBuffer& DstBuffer)
-{
-	//check(IsInRenderingThread());
-	auto const* data = RHILockStructuredBuffer(Positions.RHI, 0,  Positions.GetDataSize(), RLM_ReadOnly);
-	auto * data2 = RHILockVertexBuffer(DstBuffer.VertexBufferRHI, 0,  DstBuffer.GetDataSize(), RLM_WriteOnly);
-	FMemory::Memcpy(data2, data, Positions.GetDataSize());	
-	RHIUnlockVertexBuffer(DstBuffer.VertexBufferRHI);
-	RHIUnlockStructuredBuffer(Positions.RHI);
-}
-
 FRTClothSystemGPUBase::~FRTClothSystemGPUBase()
 {
 	
 }
-
 

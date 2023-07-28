@@ -83,7 +83,7 @@ public:
 	virtual void TickOnce(float Duration) = 0;
 
 	// update data into DstBuffer
-	virtual void UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer);
+	virtual void UpdatePositionDataTo(FRHICommandList &CmdList, FRTDynamicVertexBuffer &DstBuffer);
 	
 protected:
 
@@ -196,7 +196,6 @@ protected:
 		FVector Velocity;
 		int ID;
 	};
-	
 	TArray<FHitSphere> TriangleBoundingSpheres;
 
 	// update Mesh, rebuild Conditions

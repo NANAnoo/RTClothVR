@@ -42,7 +42,7 @@ class FRTComputeBuffer
 {
 public:
 	using ElementType = T;
-	int Num() const {return Data.Num();}
+	int Num() const {return (Data.Num() == 0 ? NumOfResource: Data.Num());}
 	void Reserve(int Number)
 	{
 		Data.Reserve(Number);
@@ -65,17 +65,17 @@ public:
 
 	void InitRHI()
 	{
+		NumOfResource = Data.Num();
 		FRHIResourceCreateInfo createInfo;
 		createInfo.ResourceArray = &Data;
-
 		RHI = RHICreateStructuredBuffer(sizeof(T), GetDataSize(), BUF_UnorderedAccess | BUF_ShaderResource, createInfo);
 		UAV = RHICreateUnorderedAccessView(RHI, false, false);
 		SRV = RHICreateShaderResourceView(RHI);
 	}
 
-	uint32 GetDataSize()
+	uint32 GetDataSize() const
 	{
-		return sizeof(T) * Data.Num();
+		return sizeof(T) * Num();
 	}
 	virtual ~FRTComputeBuffer()
 	{
@@ -85,6 +85,7 @@ public:
 	}
 private:
 	TResourceArray<T> Data;
+	uint32 NumOfResource = 0;
 };
 
 class FRTClothSystemGPUBase : public  FRTClothSystemBase
@@ -97,7 +98,7 @@ public:
 	virtual void TickOnce(float Duration) override;
 
 	// update data into DstBuffer
-	virtual void UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer) override;
+	// virtual void UpdatePositionDataTo(FRHICommandList &CmdList, FRTDynamicVertexBuffer &DstBuffer) override;
 	
 protected:
 	void SetupExternalForces_RenderThread();
@@ -131,4 +132,6 @@ protected:
 	FRTComputeBuffer<float> SharedEdgeUVLengths;
 	
 	FRTClothSimulationParameters SimParam;
+
+	FRTDynamicVertexBuffer *Updating = nullptr;
 };

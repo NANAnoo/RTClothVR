@@ -2,8 +2,11 @@
 
 #include <unordered_map>
 
-
 #include <functional>
+
+DECLARE_STATS_GROUP(TEXT("RTCloth(Collision)"), STATGROUP_RTCloth_Collision, STATCAT_Advanced);
+DECLARE_CYCLE_STAT(TEXT("Build BVH"), STAT_BUILD_BVH, STATGROUP_RTCloth_Collision);
+DECLARE_CYCLE_STAT(TEXT("Solve Collision"), STAT_SOLVE_COLLISION,STATGROUP_RTCloth_Collision);
 
 struct AABB
 {
@@ -107,7 +110,7 @@ void FRTClothSystemBase::UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 	PrepareSimulation();
 }
 
-void FRTClothSystemBase::UpdatePositionDataTo(FRTDynamicVertexBuffer &DstBuffer)
+void FRTClothSystemBase::UpdatePositionDataTo(FRHICommandList &CmdList, FRTDynamicVertexBuffer &DstBuffer)
 {
     // default implementation is to copy position into DstBuffer
     check(IsInRenderingThread());
@@ -215,40 +218,36 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
     // // build bvh tree
     TArray<BVH_Node<FHitSphere, FHitSphereToAABB>> BVH_Tree;
     BVH_Tree.Reserve(TriangleBoundingSpheres.Num() * 2);
-    int const Root = BVH_Node<FHitSphere, FHitSphereToAABB>::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
-    
-    for (int V = 0; V < Mesh->Positions.Num(); V ++)
+    int Root = 0;
     {
-        auto P = Positions[V];
-        BVH_Tree[Root].Intersect(P, BVH_Tree, [this, P, V, &Forces, &Velocities](FHitSphere const&Sphere)
+        SCOPE_CYCLE_COUNTER(STAT_BUILD_BVH);
+        Root = BVH_Node<FHitSphere, FHitSphereToAABB>::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
+    }
+    {
+        SCOPE_CYCLE_COUNTER(STAT_SOLVE_COLLISION);
+        for (int V = 0; V < Mesh->Positions.Num(); V ++)
         {
-            auto F = getFaceAt(Sphere.ID);
-            if (F.vertex_index[0] == V || F.vertex_index[1] == V || F.vertex_index[2] == V) return;
-            FVector const Center = Sphere.Center;
-            float const Len = Sphere.Radius;
-            auto C_P = P - Center;
-            auto const CenterV = Sphere.Velocity;
-            float const Dis = C_P.Size();
-            if (Dis < Len)
+            auto P = Positions[V];
+            BVH_Tree[Root].Intersect(P, BVH_Tree, [this, P, V, &Forces, &Velocities](FHitSphere const&Sphere)
             {
-                C_P.Normalize();
-                Forces[V] += Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
-            }
-        });
-        // for (int i = 0; i < TriangleBoundingSpheres.Num(); i ++)
-        // {
-        //     auto F = getFaceAt(i);
-        //     if (F.vertex_index[0] == V || F.vertex_index[1] == V || F.vertex_index[2] == V) continue;
-        //     FVector Center = TriangleBoundingSpheres[i].Center;
-        //     float Len = TriangleBoundingSpheres[i].Radius;
-        //     auto C_P = P - Center;
-        //     auto CenterV = TriangleBoundingSpheres[i].Velocity;
-        //     float Dis = C_P.Size();
-        //     if (Dis < Len)
-        //     {
-        //         C_P.Normalize();
-        //         Forces[V] += Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
-        //     }
-        // }
+                auto F = getFaceAt(Sphere.ID);
+                if (F.vertex_index[0] == V || F.vertex_index[1] == V || F.vertex_index[2] == V) return;
+                FVector const Center = Sphere.Center;
+                float const Len = Sphere.Radius;
+                auto C_P = P - Center;
+                auto const CenterV = Sphere.Velocity;
+                float const Dis = C_P.Size();
+                if (Dis < Len)
+                {
+                    C_P.Normalize();
+                    auto f = Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
+                    Forces[V] += f;
+                    f = f / (-3);
+                    Forces[F.vertex_index[0]] += f;
+                    Forces[F.vertex_index[1]] += f;
+                    Forces[F.vertex_index[2]] += f;
+                }
+            });
+        }
     }
 }
