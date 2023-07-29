@@ -39,4 +39,8 @@ struct FClothSimulationParameterUB
 	// simulation parameters
 	float DT; // duration
 	float InitTheta;
+
+	// Inner collision
+	float K_Collision;
+	float D_Collision;
 };

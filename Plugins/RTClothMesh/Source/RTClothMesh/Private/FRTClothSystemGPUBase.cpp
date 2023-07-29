@@ -4,33 +4,23 @@
 #include "FLocalForceAssemplerCS.h"
 #include "FVerletIntegratorCS.h"
 #include "FRTBendForceCS.h"
-#include "FVecCopyCS.h"
+#include "FInnerCollisionForcesCS.h"
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRTClothSimulationParameters, "RTClothMaterialUB");
 
-template<typename E>
-TArray<E> GetBufferData(FRTComputeBuffer<E> &Buffer)
-{
-	TArray<E> result;
-	result.SetNumZeroed(Buffer.Num());
-	const void *data = RHILockStructuredBuffer(Buffer.RHI, 0, Buffer.GetDataSize(), RLM_ReadOnly);
-	memcpy(result.GetData(), data, Buffer.GetDataSize());
-	RHIUnlockStructuredBuffer(Buffer.RHI);
-
-	return result;
-}
-
 void FRTClothSystemGPUBase::PrepareSimulation()
 {
-	// setup condition basis
+	// set up simulation variables
+	Indices.Reserve(this->Mesh->Indices.Num());
+	for (auto const &Idx : this->Mesh->Indices) Indices.Add(Idx);
 	ConditionBasis.Reserve(this->Mesh->Indices.Num() / 3);
+	InnerHitBVH.SetNum(this->Mesh->Indices.Num() / 3 * 2 - 1);
 	Velocities.SetNum(this->Mesh->Positions.Num());
 	LocalForces.SetNum(this->Mesh->Indices.Num());
 	GlobalForces.SetNum(Mesh->Positions.Num());
 	Pre_Positions.Reserve(this->Mesh->Positions.Num());
 	Positions.Reserve(this->Mesh->Positions.Num());
-	InvMasses.Reserve(this->Mesh->Positions.Num());
-	__Temp.SetNum(this->Mesh->Positions.Num());
+	VertMasses.Reserve(this->Mesh->Positions.Num());
 	TArray<TArray<int>> SubForceRefsMap;
 	SubForceRefsMap.SetNumZeroed(this->Mesh->Positions.Num());
 	for (int32 i = 0; i < this->Mesh->Indices.Num() / 3; i ++)
@@ -62,6 +52,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 	PreSumOfRefIndices.Add(0);
 	for (int i = 0; i < Mesh->Positions.Num(); i ++)
 	{
+		VertMasses.Add(Masses[i]);
 		InvMasses.Add(1.0f / Masses[i]);
 		Pre_Positions.Add(Mesh->Positions[i]);
 		Positions.Add(Mesh->Positions[i]);
@@ -142,12 +133,14 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_PrepareSimulation)(
 	[this](FRHICommandList &CmdLists)
 	{
+		Indices.InitRHI();
 		ConditionBasis.InitRHI();
 		Velocities.InitRHI();
 		LocalForces.InitRHI();
 		SubForceIndices.InitRHI();
 		PreSumOfRefIndices.InitRHI();
 		InvMasses.InitRHI();
+		VertMasses.InitRHI();
 		ConstraintMap.InitRHI();
 		ConstraintData.InitRHI();
 		Pre_Positions.InitRHI();
@@ -158,7 +151,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		Bend_SubForceIndices.InitRHI();
 		Bend_PreSumOfRefIndices.InitRHI();
 		SharedEdgeUVLengths.InitRHI();
-		__Temp.InitRHI();
+		InnerHitBVH.InitRHI();
 	});
 	FlushRenderingCommands();
 }
@@ -166,6 +159,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 
 void FRTClothSystemGPUBase::TickOnce(float Duration)
 {
+	FRTClothSystemBase::TickOnce(Duration);
 	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_TickOnce)(
 	[this, Duration](FRHICommandList &RHICommands)
 	{
@@ -180,9 +174,19 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		SimParam.Rest_V = M_Material.Rest_V;
 		SimParam.DT = Duration;
 		SimParam.InitTheta = M_Material.InitTheta;
+		SimParam.K_Collision = M_Material.K_Collision;
+		SimParam.D_Collision = M_Material.D_Collision;
 		auto const SimParamUBO = FRTClothSimulationParameters::CreateUniformBuffer(SimParam, UniformBuffer_SingleFrame);
-		
 		SetupExternalForces_RenderThread();
+		if (M_Material.EnableInnerCollision)
+		{
+			UpdateTriangleProperties(Mesh->Positions, Velocities.GetBufferData());
+			TArray<FInnerCollisionBVHNode> BVHTree;
+			BVHTree.Reserve(TriangleBoundingSpheres.Num() * 2 - 1);
+			FInnerCollisionBVHNode::BuildFrom(TriangleBoundingSpheres, BVHTree, 0, TriangleBoundingSpheres.Num() - 1);
+			InnerHitBVH.UploadData(BVHTree);
+			InnerCollisionForces_RenderThread(SimParamUBO, RHICommands);
+		}
 		UpdateStretchAndShearForce_RenderThread(SimParamUBO, RHICommands);
 		UpdateBendForce_RenderThread(SimParamUBO, RHICommands);
 		AssembleForce(RHICommands);
@@ -191,6 +195,22 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		FMemory::Memcpy(Mesh->Positions.GetData(), data, Positions.GetDataSize());
 		RHIUnlockStructuredBuffer(Positions.RHI);
 	});
+}
+
+void FRTClothSystemGPUBase::InnerCollisionForces_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
+{
+	TShaderMapRef<FInnerCollisionForcesCS> const InnerCollisionCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = InnerCollisionCSRef.GetComputeShader();
+	RHICommands.SetShaderUniformBuffer(CS, InnerCollisionCSRef->SimParams.GetBaseIndex(), UBO);
+	RHICommands.SetShaderResourceViewParameter(CS, InnerCollisionCSRef->InnerHitBVH.GetBaseIndex(), InnerHitBVH.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, InnerCollisionCSRef->Masses.GetBaseIndex(), VertMasses.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, InnerCollisionCSRef->Indices.GetBaseIndex(), Indices.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, InnerCollisionCSRef->Velocities.GetBaseIndex(), Velocities.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, InnerCollisionCSRef->Positions.GetBaseIndex(), Positions.SRV);
+	RHICommands.SetUAVParameter(CS, InnerCollisionCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
+	
+	RHICommands.SetComputeShader(CS);
+	DispatchComputeShader(RHICommands, InnerCollisionCSRef, Masses.Num() / 16 + 1, 1, 1);
 }
 
 void FRTClothSystemGPUBase::UpdateStretchAndShearForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const

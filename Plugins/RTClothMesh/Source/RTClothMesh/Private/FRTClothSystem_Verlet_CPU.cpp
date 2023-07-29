@@ -75,15 +75,19 @@ void FRTClothSystem_Verlet_CPU::PrepareSimulation()
 void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 {
 	SCOPE_CYCLE_COUNTER(TIME_COST_Verlet);
+	FRTClothSystemBase::TickOnce(Duration);
 	// set up gravity
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
 		Forces[i] = Masses[i] * Gravity;
 	}
 	{
-	 	SCOPE_CYCLE_COUNTER(Collision_Verlet);
-	 	UpdateTriangleProperties(Mesh->Positions, Velocities);
-	 	AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
+		if (M_Material.EnableInnerCollision)
+		{
+			SCOPE_CYCLE_COUNTER(Collision_Verlet);
+			UpdateTriangleProperties(Mesh->Positions, Velocities);
+			AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
+		}
 	}
 	{
 		SCOPE_CYCLE_COUNTER(Acceleration_Verlet);

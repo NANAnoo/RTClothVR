@@ -2,93 +2,12 @@
 
 #include <unordered_map>
 
-#include <functional>
+#include <FBVHTree.h>
+using namespace RTCloth;
 
 DECLARE_STATS_GROUP(TEXT("RTCloth(Collision)"), STATGROUP_RTCloth_Collision, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("Build BVH"), STAT_BUILD_BVH, STATGROUP_RTCloth_Collision);
 DECLARE_CYCLE_STAT(TEXT("Solve Collision"), STAT_SOLVE_COLLISION,STATGROUP_RTCloth_Collision);
-
-struct AABB
-{
-    bool Contains(FVector const& Pos) const
-    {
-        return Pos[0] < Max[0] && Pos[0] > Min[0] &&
-           Pos[1] < Max[1] && Pos[1] > Min[1] &&
-           Pos[2] < Max[2] && Pos[2] > Min[2];
-    }
-    bool Intersect(AABB const&other) const
-    {
-        return Contains(other.Max) || Contains(other.Min) || other.Contains(Max) || other.Contains(Min);
-    }
-    AABB operator+(AABB const&Other)
-    {
-        AABB Result;
-        Result.Max[0] = std::max(Max[0], Other.Max[0]);
-        Result.Max[1] = std::max(Max[1], Other.Max[1]);
-        Result.Max[2] = std::max(Max[2], Other.Max[2]);
-
-        Result.Min[0] = std::min(Min[0], Other.Min[0]);
-        Result.Min[1] = std::min(Min[1], Other.Min[1]);
-        Result.Min[2] = std::min(Min[2], Other.Min[2]);
-
-        return Result;
-    }
-    FVector Max;
-    FVector Min;
-};
-
-template<typename T, typename AABB_builder>
-struct BVH_Node
-{
-    explicit BVH_Node(T const& Obj) : box(AABB_builder{}(Obj)), value(Obj)
-    {
-    } 
-    explicit BVH_Node(AABB const& Box)
-    {
-        box = Box;
-    }
-
-    static int BuildFrom(TArray<T> const&Objects, TArray<BVH_Node<T, AABB_builder>>&Result, int Begin, int End)
-    {
-        if (End == Begin)
-        {
-            BVH_Node NewNode(Objects[Begin]);
-            Result.Add(NewNode);
-        } else
-        {
-            int Mid = (Begin + End) >> 1;
-            int L = BuildFrom(Objects, Result, Begin, Mid);
-            int R = BuildFrom(Objects, Result, Mid + 1, End);
-            BVH_Node NewNode(Result[L].box + Result[R].box);
-            NewNode.L = L;
-            NewNode.R = R;
-            Result.Add(NewNode);
-        }
-        return Result.Num() - 1;
-    }
-    
-    void Intersect(FVector const&Pos, TArray<BVH_Node> const& Nodes, std::function<void(T const&Value)> const&Handler) const
-    {
-        if (box.Contains(Pos))
-        {
-            if (L == -1 && R == -1)
-            {
-                Handler(value);
-            } else
-            {
-                if (L >= 0)
-                    Nodes[L].Intersect(Pos, Nodes, Handler);
-                if (R >= 0)
-                    Nodes[R].Intersect(Pos, Nodes, Handler);
-            }
-            
-        }
-    }
-    int L = -1;
-    int R = -1;
-    AABB box;
-    T value;
-};
 
 void FRTClothSystemBase::Init (
 	std::shared_ptr<FClothRawMesh> const& AMesh,
@@ -110,6 +29,21 @@ void FRTClothSystemBase::UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
 	PrepareSimulation();
 }
 
+void FRTClothSystemBase::TickOnce(float Duration)
+{
+    CurrentBox.Max = Mesh->Positions[0];
+    CurrentBox.Min = Mesh->Positions[0];
+    for (auto &pos: Mesh->Positions)
+    {
+        for (int i = 0; i < 3; i ++)
+        {
+            CurrentBox.Max[i] = std::max(CurrentBox.Max[i], pos[i]);
+            CurrentBox.Min[i] = std::min(CurrentBox.Min[i], pos[i]);
+        }
+    }
+}
+
+
 void FRTClothSystemBase::UpdatePositionDataTo(FRHICommandList &CmdList, FRTDynamicVertexBuffer &DstBuffer)
 {
     // default implementation is to copy position into DstBuffer
@@ -125,7 +59,7 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
     Mesh = AMesh;
     Masses.SetNumZeroed(Mesh->Positions.Num());
     ExternalForces.SetNumZeroed(Mesh->Positions.Num());
-    TriangleBoundingSpheres.SetNumZeroed(Mesh->Indices.Num());
+    TriangleBoundingSpheres.SetNumZeroed(Mesh->Indices.Num() / 3);
     MakeDirectedEdgeModel();
     // update masses
     for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)
@@ -139,6 +73,16 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
         Masses[V0] += Mass / 3;
         Masses[V1] += Mass / 3;
         Masses[V2] += Mass / 3;
+    }
+    CurrentBox.Max = Mesh->Positions[0];
+    CurrentBox.Min = Mesh->Positions[0];
+    for (auto &pos: Mesh->Positions)
+    {
+        for (int i = 0; i < 3; i ++)
+        {
+            CurrentBox.Max[i] = std::max(CurrentBox.Max[i], pos[i]);
+            CurrentBox.Min[i] = std::min(CurrentBox.Min[i], pos[i]);
+        }
     }
 }
 
@@ -207,21 +151,13 @@ void FRTClothSystemBase::UpdateTriangleProperties(TArray<FVector> const&Position
 
 void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities)
 {
-    struct FHitSphereToAABB
-    {
-        AABB operator()(FHitSphere const&Sphere) const
-        {
-            FVector const Diff(Sphere.Radius, Sphere.Radius, Sphere.Radius);
-            return {Sphere.Center + Diff, Sphere.Center - Diff};
-        }
-    };
     // // build bvh tree
-    TArray<BVH_Node<FHitSphere, FHitSphereToAABB>> BVH_Tree;
+    TArray<FInnerCollisionBVHNode> BVH_Tree;
     BVH_Tree.Reserve(TriangleBoundingSpheres.Num() * 2);
     int Root = 0;
     {
         SCOPE_CYCLE_COUNTER(STAT_BUILD_BVH);
-        Root = BVH_Node<FHitSphere, FHitSphereToAABB>::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
+        Root = FInnerCollisionBVHNode::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
     }
     {
         SCOPE_CYCLE_COUNTER(STAT_SOLVE_COLLISION);
@@ -240,12 +176,12 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
                 if (Dis < Len)
                 {
                     C_P.Normalize();
-                    auto f = Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
+                    auto const f = Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
                     Forces[V] += f;
-                    f = f / (-3);
-                    Forces[F.vertex_index[0]] += f;
-                    Forces[F.vertex_index[1]] += f;
-                    Forces[F.vertex_index[2]] += f;
+                    // f = f / (-3);
+                    // Forces[F.vertex_index[0]] += f;
+                    // Forces[F.vertex_index[1]] += f;
+                    // Forces[F.vertex_index[2]] += f;
                 }
             });
         }

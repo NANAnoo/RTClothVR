@@ -84,6 +84,7 @@ void FRTClothSystem_Leapfrog_CPU::PrepareSimulation()
 void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 {
 	SCOPE_CYCLE_COUNTER(TIME_COST_LeapFrog)
+	FRTClothSystemBase::TickOnce(Duration);
 	// Update Velocity_Half
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
@@ -107,6 +108,11 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 		Acceleration();
 	}
 	
+	if (M_Material.EnableInnerCollision)
+	{
+		UpdateTriangleProperties(Mesh->Positions, Velocities);
+		AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
+	}
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
 		auto const Acc = Forces[i] / Masses[i];

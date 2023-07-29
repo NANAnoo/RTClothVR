@@ -63,6 +63,23 @@ public:
 	FShaderResourceViewRHIRef SRV;
 	FStructuredBufferRHIRef RHI;
 
+	TArray<T> GetBufferData()
+	{
+		TArray<T> result;
+		result.SetNumZeroed(Num());
+		const void *data = RHILockStructuredBuffer(RHI, 0, GetDataSize(), RLM_ReadOnly);
+		FMemory::Memcpy(result.GetData(), data, GetDataSize());
+		RHIUnlockStructuredBuffer(RHI);
+		return result;
+	}
+
+	void UploadData(TArray<T> const&NewData)
+	{
+		void *data = RHILockStructuredBuffer(RHI, 0, GetDataSize(), RLM_WriteOnly);
+		FMemory::Memcpy(data, NewData.GetData(), GetDataSize());
+		RHIUnlockStructuredBuffer(RHI);
+	}
+
 	void InitRHI()
 	{
 		NumOfResource = Data.Num();
@@ -103,6 +120,7 @@ public:
 protected:
 	void SetupExternalForces_RenderThread();
 
+	void InnerCollisionForces_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
 	void UpdateStretchAndShearForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
 	void UpdateBendForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
 	void AssembleForce(FRHICommandList &RHICommands) const;
@@ -117,8 +135,9 @@ protected:
 	FRTComputeBuffer<FVector> GlobalForces;
 	FRTComputeBuffer<FVector> Pre_Positions;
 	FRTComputeBuffer<FVector> Positions;
-	FRTComputeBuffer<FVector> __Temp;
 	FRTComputeBuffer<float> InvMasses;
+	FRTComputeBuffer<float> VertMasses;
+	FRTComputeBuffer<int> Indices;
 	FRTComputeBuffer<int> PreSumOfRefIndices;
 	FRTComputeBuffer<int> SubForceIndices;
 	FRTComputeBuffer<int> ConstraintMap;
@@ -130,6 +149,9 @@ protected:
 	FRTComputeBuffer<int> Bend_SubForceIndices;
 	FRTComputeBuffer<FVector> Bend_LocalForces;
 	FRTComputeBuffer<float> SharedEdgeUVLengths;
+
+	// Collision Structure
+	FRTComputeBuffer<FInnerCollisionBVHNode> InnerHitBVH;
 	
 	FRTClothSimulationParameters SimParam;
 

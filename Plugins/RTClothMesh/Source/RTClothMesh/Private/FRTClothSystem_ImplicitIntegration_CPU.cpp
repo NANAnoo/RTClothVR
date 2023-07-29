@@ -8,10 +8,16 @@ DECLARE_CYCLE_STAT(TEXT("Solve Linear Equation"), SolveLinearEquation_Implicit,S
 void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
     SCOPE_CYCLE_COUNTER(TIME_COST_Implicit);
+    FRTClothSystemBase::TickOnce(Duration);
     if (!IsFirstFrame)
     {
         SCOPE_CYCLE_COUNTER(ForcesAndDerivatives_Implicit)
         ForcesAndDerivatives();
+    }
+    if (M_Material.EnableInnerCollision)
+    {
+        UpdateTriangleProperties(Mesh->Positions, Velocity);
+        AddCollisionSpringForces(Forces, Mesh->Positions, Velocity);
     }
     IsFirstFrame = false;
     // build up equation for solver, A x = b

@@ -6,6 +6,7 @@
 
 #include "FRTClothSolver.h"
 #include "FRTDynamicVertexBuffer.h"
+#include "FBVHTree.h"
 
 // the simulation parameters
 template <typename  Real>
@@ -36,6 +37,11 @@ struct FRTClothPhysicalMaterial
 	// Collision spring
 	Real K_Collision;
 	Real D_Collision;
+
+	Real Friction;
+	int EnableCollision;
+	int EnableInnerCollision;
+	int EnableFriction = 1;
 };
 
 class FRTClothSystemBase
@@ -65,6 +71,16 @@ public:
 		Constraints.Remove(Id);
 	}
 
+	void UpdateCollider(int32 ID, FRTClothCollider const&Collider)
+	{
+		Colliders.FindOrAdd(ID) = Collider;
+	}
+
+	void RemoveCollider(int32 ID)
+	{
+		Colliders.Remove(ID);
+	}
+
 	// TODO: set up Collision bodies
 	// void AddCollider();
 
@@ -79,8 +95,11 @@ public:
 		return Mesh->Positions;
 	}
 
+	FVector BoundingBoxMax() const {return CurrentBox.Max;}
+	FVector BoundingBoxMin() const {return CurrentBox.Min;}
+
 	// simulate for one tick
-	virtual void TickOnce(float Duration) = 0;
+	virtual void TickOnce(float Duration);
 
 	// update data into DstBuffer
 	virtual void UpdatePositionDataTo(FRHICommandList &CmdList, FRTDynamicVertexBuffer &DstBuffer);
@@ -183,11 +202,15 @@ protected:
 	// Constraints
 	TMap<uint32, FRTMatrix3> Constraints;
 
+	TMap<uint32, FRTClothCollider> Colliders;
+
 	// Gravity
 	FVector Gravity = {0, 0, 0};
 
 	TArray<FVector> ExternalForces;
 	// center, radius
+
+	RTCloth::AABB CurrentBox;
 
 	struct FHitSphere
 	{
@@ -204,4 +227,14 @@ protected:
 	// update triangle parameters
 	void UpdateTriangleProperties(TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
 	void AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
+
+	struct FHitSphereToAABB
+	{
+		RTCloth::AABB operator()(FHitSphere const&Sphere) const
+		{
+			FVector const Diff(Sphere.Radius, Sphere.Radius, Sphere.Radius);
+			return {Sphere.Center + Diff, Sphere.Center - Diff};
+		}
+	};
+	typedef RTCloth::BVH_Node<FHitSphere, FHitSphereToAABB> FInnerCollisionBVHNode;
 };

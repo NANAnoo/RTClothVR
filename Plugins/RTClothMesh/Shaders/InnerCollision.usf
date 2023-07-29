@@ -1,25 +1,86 @@
 ﻿#pragma once
 #include </Engine/Public/Platform.ush>
+#include "FRTClothStructures.ush"
 
-// local forces cache, three forces on the processed triangle
+struct FHitSphere
+{
+	float3 Center;
+	float Radius;
+	float3 Velocity;
+	int ID;
+};
+
+struct FHitSphereBVHNode
+{
+	FHitSphere Sphere;
+	float3 Max;
+	float3 Min;
+	int L;
+	int R;
+};
+
+uniform FClothSimulationParameterUB SimParams;
+// hit structure
+StructuredBuffer<FHitSphereBVHNode> InnerHitBVH;
+// triangle information
 StructuredBuffer<int> Indices;
-StructuredBuffer<int> Pre_Positions;
-RWStructuredBuffer<int> Positions;
-RWStructuredBuffer<int> Velocities;
+StructuredBuffer<float> Masses;
+StructuredBuffer<float3> Positions;
+StructuredBuffer<float3> Velocities;
+RWStructuredBuffer<float3> Forces;
+
+void IntersectSphere(uint V, float3 P, FHitSphere Sphere)
+{
+	int F_v0 = Indices[Sphere.ID * 3];
+	int F_v1 = Indices[Sphere.ID * 3 + 1];
+	int F_v2 = Indices[Sphere.ID * 3 + 2];
+	int cond_1 = !(F_v0 == V || F_v1 == V || F_v2 == V);
+	float3 Center = Sphere.Center;
+	float Len = Sphere.Radius;
+	float3 C_P = P - Center;
+	float3 CenterV = Sphere.Velocity;
+	float Dis = length(C_P);
+	int cond_2 = Dis < Len;
+	C_P = normalize(C_P);
+	Forces[V] += cond_1 * cond_2 * Masses[V] * (C_P * (Len - Dis) * SimParams.K_Collision - (Velocities[V] - CenterV) * SimParams.D_Collision);
+}
 
 [numthreads(16, 1, 1)]
-void CopyVec(uint3 ThreadId : SV_DispatchThreadID)
+void Solve(uint3 ThreadId : SV_DispatchThreadID)
 {
 	uint NumOfVertices, _;
 	Positions.GetDimensions(NumOfVertices, _);
 
-	int Index = ThreadId.x;
-	if (NumOfVertices <= Index) return;
+	uint V = ThreadId.x;
+	if (NumOfVertices <= V) return;
 
-	uint NumOfTriangles;
-	Indices.GetDimensions(NumOfTriangles, _);
-	for (int i = 0; i < NumOfTriangles; i ++)
+	uint NumOfNodes;
+	InnerHitBVH.GetDimensions(NumOfNodes, _);
+	float3 Pos = Positions[V];
+
+	// recursion to iteration
+	uint Stack[32];
+	uint SP = 0;
+	// Push(Root)
+	Stack[SP ++] = NumOfNodes - 1;
+	while (SP > 0)
 	{
-		
+		// Pop Head
+		FHitSphereBVHNode Top = InnerHitBVH[Stack[--SP]];
+		int InSide = Pos[0] < Top.Max[0] && Pos[0] > Top.Min[0] &&
+			   Pos[1] < Top.Max[1] && Pos[1] > Top.Min[1] &&
+			   Pos[2] < Top.Max[2] && Pos[2] > Top.Min[2];
+		if (InSide)
+		{
+			if (Top.L == -1 && Top.R == -1)
+			{
+				IntersectSphere(V, Pos, Top.Sphere);
+			} else
+			{
+				// Push left and right
+				Stack[SP ++] = Top.L;
+				Stack[SP ++] = Top.R;
+			}
+		}
 	}
 }

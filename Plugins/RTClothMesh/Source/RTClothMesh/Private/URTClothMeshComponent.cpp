@@ -25,6 +25,7 @@
 #include "FRTClothSystem_Leapfrog_CPU.h"
 #include "FRTClothSystemGPUBase.h"
 #include "FRTClothSystem_Verlet_CPU.h"
+#include "Components/BoxComponent.h"
 
 // a custom scene proxy
 class FClothMeshSceneProxy : public FPrimitiveSceneProxy
@@ -232,6 +233,7 @@ URTClothMeshComponent::URTClothMeshComponent(const FObjectInitializer& ObjectIni
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bAutoActivate = true;
+	bTickInEditor = true;
 }
 
 void URTClothMeshComponent::OnRegister()
@@ -264,14 +266,14 @@ void URTClothMeshComponent::OnRegister()
 			FlushRenderingCommands();
 			// setup cloth solver system
 			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			//ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
+			//ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
 			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(1, {});
+			ClothSystem->AddConstraint(0, {});
 			for (int i = 0; i < ClothMesh->Positions.Num(); i ++)
 			{
-				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[1].Z)
+				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[0].Z)
 				{
 					ClothSystem->AddConstraint(i, {});
 				}
@@ -284,12 +286,97 @@ void URTClothMeshComponent::OnRegister()
 					K_Stretch, D_Stretch,
 					K_Shear, D_Shear,
 					Rest_U, Rest_V, Density, InitTheta / 180 * PI
-					,K_Collision,D_Collision}
+					,K_Collision,D_Collision, Friction, EnableCollision, EnableInnerCollision}
 				);
-			//FOnPropertyChanged
+
+			// add a hit box to perform collision from UE4 objects
+			if (EnableCollision)
+			{
+				if (!HitBox)
+				{
+					HitBox = NewObject<UBoxComponent>(this, UBoxComponent::StaticClass());
+					HitBox->RegisterComponent();
+					HitBox->SetVisibility(true);
+					HitBox->OnComponentBeginOverlap.AddDynamic(this, &URTClothMeshComponent::OnOverLapBegin);
+					HitBox->OnComponentEndOverlap.AddDynamic(this, &URTClothMeshComponent::OnOverLapEnd);
+					HitBox->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
+					HitBox->InitBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
+					HitBox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+				}
+			
+				// when component is dynamically created, you can use AttachToComponent, not SetupAttachment
+				HitBox->SetRelativeLocation((ClothSystem->BoundingBoxMax() + ClothSystem->BoundingBoxMin()) / 2);
+				HitBox->SetBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
+			} else
+			{
+				if (HitBox)
+				{
+					HitBox->OnComponentBeginOverlap.RemoveAll(this);
+					HitBox->OnComponentEndOverlap.RemoveAll(this);
+					HitBox->RemoveFromRoot();
+					HitBox = nullptr;
+					// TODO : remove colliders in system
+				}
+			}
 		}
 	};
 }
+
+void URTClothMeshComponent::BeginPlay()
+{
+	Super::BeginPlay();
+}
+
+void URTClothMeshComponent::OnOverLapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult & SweepResult)
+{
+	if (ClothSystem && EnableCollision)
+	{
+		FCollisionShape CollisionShape = OtherComp->GetCollisionShape();
+		FVector V = OtherActor->GetVelocity();
+		float A = 0, B = 0, C = 0;
+		int Type = -1;
+		if (CollisionShape.IsBox())
+		{
+			A = CollisionShape.GetBox().X;
+			B = CollisionShape.GetBox().Y;
+			C = CollisionShape.GetBox().Z;
+			Type = FRTClothCollider::FRTClothColliderBox;
+		}
+		if (CollisionShape.IsSphere())
+		{
+			A = CollisionShape.GetSphereRadius();
+			Type = FRTClothCollider::FRTClothColliderSphere;
+		}
+		if (CollisionShape.IsCapsule())
+		{
+			A = CollisionShape.GetCapsuleRadius();
+			B = CollisionShape.GetCapsuleHalfHeight();
+			Type = FRTClothCollider::FRTClothColliderCapsule;
+		}
+		if (Type >= 0)
+		{
+			ClothSystem->UpdateCollider(OtherBodyIndex, {
+				OtherComp->GetComponentToWorld().ToMatrixWithScale(),
+				OtherComp->GetComponentVelocity(),
+				A,
+				B,
+				C,
+					Type
+			});
+		}
+		
+	}
+}
+
+void URTClothMeshComponent::OnOverLapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	if (ClothSystem && EnableCollision)
+	{
+		ClothSystem->RemoveCollider(OtherBodyIndex);
+	}
+	
+}
+
 
 bool URTClothMeshComponent::SetupCloth_CPU(UStaticMesh *Mesh) const
 {
@@ -457,6 +544,8 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 		//ClothSystem->TickOnce(std::max(0.001f, std::min(DeltaTime, 0.05f)));
 		ClothSystem->TickOnce(0.005f);
 	});
+	HitBox->SetRelativeLocation((ClothSystem->BoundingBoxMax() + ClothSystem->BoundingBoxMin()) / 2);
+	HitBox->SetBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
 	// Need to send new data to render thread
 	MarkRenderDynamicDataDirty();
 	UpdateComponentToWorld();

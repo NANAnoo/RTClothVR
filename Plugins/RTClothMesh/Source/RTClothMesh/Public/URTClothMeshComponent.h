@@ -8,6 +8,7 @@
 #include "CoreMinimal.h"
 #include "UObject/ObjectMacros.h"
 #include "Components/MeshComponent.h"
+#include "Components/BoxComponent.h"
 #include "URTClothMeshComponent.generated.h"
 
 class UStaticMesh;
@@ -55,6 +56,15 @@ public:
 	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="D_Collision", ClampMin="0", ClampMax="1000"))
 	float D_Collision = 1;
 
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Inner Collision"))
+	bool EnableInnerCollision = true;
+	
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Collision"))
+	bool EnableCollision = true;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Friction", ClampMin="0", ClampMax="1"))
+	float Friction = 0.3;
+
 private:
 	// setup cloth mesh and cloth system in RenderThread
 	bool SetupCloth_CPU(UStaticMesh *OriginalMesh) const;
@@ -69,12 +79,22 @@ private:
 	virtual FBoxSphereBounds CalcBounds(const FTransform &) const override;
 
 	// Component Life Cycles
-	void OnRegister() override;
-	void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)override;
-
+	virtual void OnRegister() override;
+	virtual void TickComponent(float DeltaTime, enum ELevelTick TickType, FActorComponentTickFunction *ThisTickFunction)override;
+	virtual void BeginPlay() override;
+	
 	// Render Data Pass Through
 	virtual void SendRenderDynamicData_Concurrent() override;
 	virtual void CreateRenderState_Concurrent(FRegisterComponentContext* Context) override;
 	std::shared_ptr<FClothRawMesh> ClothMesh;
 	std::unique_ptr<FRTClothSystemBase> ClothSystem;
+
+	UPROPERTY(EditInstanceOnly)
+	UBoxComponent *HitBox;
+	
+	UFUNCTION()
+	void OnOverLapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult & SweepResult);
+
+	UFUNCTION()
+	void OnOverLapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex);
 };

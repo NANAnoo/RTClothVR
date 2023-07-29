@@ -184,3 +184,25 @@ private:
 	bool Logged = false;
 };
 
+// Cloth Collider
+struct FRTClothCollider {
+	constexpr static int FRTClothColliderSphere = 0;
+	constexpr static int FRTClothColliderCapsule = 1;
+	constexpr static int FRTClothColliderBox = 2;
+
+	FMatrix LocalToWorld = FMatrix::Identity;
+	FVector4 Velocity;
+	union
+	{
+		float Radius;      // Sphere, Capsule
+		float HalfExtentX; // Box
+	};
+	union
+	{
+		float HalfHeight;  // Capsule
+		float HalfExtentY; // Box
+	};
+	float HalfExtentZ; // Box
+	int Type = FRTClothColliderSphere;
+};
+
