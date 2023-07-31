@@ -34,7 +34,6 @@ private:
 
 	// forces and derivatives
 	TArray<FVector> Forces;
-	TArray<FVector> DampingForces;
 	FRTBBSSMatrix<float> Df_Dx;
 	FRTBBSSMatrix<float> Df_Dv;
 

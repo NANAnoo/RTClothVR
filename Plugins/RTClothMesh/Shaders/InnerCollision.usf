@@ -34,15 +34,19 @@ void IntersectSphere(uint V, float3 P, FHitSphere Sphere)
 	int F_v0 = Indices[Sphere.ID * 3];
 	int F_v1 = Indices[Sphere.ID * 3 + 1];
 	int F_v2 = Indices[Sphere.ID * 3 + 2];
-	int cond_1 = !(F_v0 == V || F_v1 == V || F_v2 == V);
-	float3 Center = Sphere.Center;
-	float Len = Sphere.Radius;
-	float3 C_P = P - Center;
-	float3 CenterV = Sphere.Velocity;
-	float Dis = length(C_P);
-	int cond_2 = Dis < Len;
-	C_P = normalize(C_P);
-	Forces[V] += cond_1 * cond_2 * Masses[V] * (C_P * (Len - Dis) * SimParams.K_Collision - (Velocities[V] - CenterV) * SimParams.D_Collision);
+	if (!(F_v0 == V || F_v1 == V || F_v2 == V))
+	{
+		float3 Center = Sphere.Center;
+		float Len = Sphere.Radius;
+		float3 C_P = P - Center;
+		float3 CenterV = Sphere.Velocity;
+		float Dis = length(C_P);
+		if (Dis < Len)
+		{
+			C_P = normalize(C_P);
+			Forces[V] += Masses[V] * (C_P * (Len - Dis) * SimParams.K_Collision - (Velocities[V] - CenterV) * SimParams.D_Collision);
+		}
+	}
 }
 
 [numthreads(16, 1, 1)]

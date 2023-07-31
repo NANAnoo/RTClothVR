@@ -233,7 +233,6 @@ URTClothMeshComponent::URTClothMeshComponent(const FObjectInitializer& ObjectIni
 {
 	PrimaryComponentTick.bCanEverTick = true;
 	bAutoActivate = true;
-	bTickInEditor = true;
 }
 
 void URTClothMeshComponent::OnRegister()
@@ -265,20 +264,24 @@ void URTClothMeshComponent::OnRegister()
 			}
 			FlushRenderingCommands();
 			// setup cloth solver system
-			//ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>());
-			ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
-			//ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>();
-			//ClothSystem = std::make_unique<FRTClothSystemGPUBase>();
-			//ClothSystem.AddConstraint(0, {FClothConstraint::ELockingType::ConstraintOnPlane, {0, 0, 1}});
-			ClothSystem->AddConstraint(0, {});
+			switch(PlainEnum)
+			{
+				case CPU_Verlet:ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>(); break;
+				case CPU_Implicit:ClothSystem = std::make_unique<FRTClothSystem_ImplicitIntegration_CPU>(std::make_shared<FModifiedCGSolver>()); break;
+				case CPU_Leapfrog:ClothSystem = std::make_unique<FRTClothSystem_Leapfrog_CPU>(); break;
+				case GPU_Verlet:ClothSystem = std::make_unique<FRTClothSystemGPUBase>(); break;
+				default:ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
+			}
+			
+			ClothSystem->AddConstraint(1, {});
 			for (int i = 0; i < ClothMesh->Positions.Num(); i ++)
 			{
-				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[0].Z)
+				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[1].Z)
 				{
 					ClothSystem->AddConstraint(i, {});
 				}
 			}
-			ClothSystem->SetGravity({0, -100, 0});
+			ClothSystem->SetGravity({0, 0, -100});
 			 
 			ClothSystem->Init(ClothMesh,
 				{
@@ -286,7 +289,7 @@ void URTClothMeshComponent::OnRegister()
 					K_Stretch, D_Stretch,
 					K_Shear, D_Shear,
 					Rest_U, Rest_V, Density, InitTheta / 180 * PI
-					,K_Collision,D_Collision, Friction, EnableCollision, EnableInnerCollision}
+					,K_Collision,D_Collision, GlobalDamping, EnableCollision, EnableInnerCollision}
 				);
 
 			// add a hit box to perform collision from UE4 objects
@@ -302,6 +305,7 @@ void URTClothMeshComponent::OnRegister()
 					HitBox->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 					HitBox->InitBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
 					HitBox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+					HitBox->SetHiddenInGame(false);
 				}
 			
 				// when component is dynamically created, you can use AttachToComponent, not SetupAttachment
@@ -315,11 +319,15 @@ void URTClothMeshComponent::OnRegister()
 					HitBox->OnComponentEndOverlap.RemoveAll(this);
 					HitBox->RemoveFromRoot();
 					HitBox = nullptr;
-					// TODO : remove colliders in system
 				}
 			}
 		}
 	};
+}
+
+void URTClothMeshComponent::OnUnregister()
+{
+	Super::OnUnregister();
 }
 
 void URTClothMeshComponent::BeginPlay()
@@ -329,9 +337,12 @@ void URTClothMeshComponent::BeginPlay()
 
 void URTClothMeshComponent::OnOverLapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult & SweepResult)
 {
-	if (ClothSystem && EnableCollision)
+	TArray<URTClothMeshComponent *> Comps;
+	OtherActor->GetComponents<URTClothMeshComponent>(Comps);
+	if (Comps.Num()>0) return;
+	if (OverlappedComponent == HitBox && ClothSystem && EnableCollision)
 	{
-		FCollisionShape CollisionShape = OtherComp->GetCollisionShape();
+		FCollisionShape const CollisionShape = OtherComp->GetCollisionShape();
 		FVector V = OtherActor->GetVelocity();
 		float A = 0, B = 0, C = 0;
 		int Type = -1;
@@ -355,12 +366,12 @@ void URTClothMeshComponent::OnOverLapBegin(UPrimitiveComponent* OverlappedCompon
 		}
 		if (Type >= 0)
 		{
-			ClothSystem->UpdateCollider(OtherBodyIndex, {
-				OtherComp->GetComponentToWorld().ToMatrixWithScale(),
-				OtherComp->GetComponentVelocity(),
-				A,
-				B,
-				C,
+			ClothSystem->UpdateCollider(OtherComp, {
+				FMatrix::Identity,
+				FMatrix::Identity,
+				A + 1,
+				 B +1,
+				C +1,
 					Type
 			});
 		}
@@ -370,11 +381,13 @@ void URTClothMeshComponent::OnOverLapBegin(UPrimitiveComponent* OverlappedCompon
 
 void URTClothMeshComponent::OnOverLapEnd(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	if (ClothSystem && EnableCollision)
+	TArray<URTClothMeshComponent *> Comps;
+	OtherActor->GetComponents<URTClothMeshComponent>(Comps);
+	if (Comps.Num()>0) return;
+	if (OverlappedComponent == HitBox && ClothSystem && EnableCollision)
 	{
-		ClothSystem->RemoveCollider(OtherBodyIndex);
+		ClothSystem->RemoveCollider(OtherComp);
 	}
-	
 }
 
 
@@ -535,20 +548,22 @@ void URTClothMeshComponent::TickComponent(float DeltaTime, enum ELevelTick TickT
 	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
 	if (Components.Num() > 0 && ClothMesh != nullptr)
 	{
-		// update attached transform, TODO : external force here
-		ClothMesh->LocalToWorld = Components[0]->GetComponentTransform();
+		auto Transform = Components[0]->GetComponentTransform();
+		ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
+		[this, Transform, DeltaTime](FRHICommandListImmediate &CmdList)
+		{
+			ClothSystem->UpdateTransform(Transform, DeltaTime);
+			ClothSystem->TickOnce(0.005f);
+		});
+		FlushRenderingCommands();
+		if (HitBox)
+		{
+			HitBox->SetRelativeLocation((ClothSystem->BoundingBoxMax() + ClothSystem->BoundingBoxMin()) / 2);
+			HitBox->SetBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);// Need to send new data to render thread
+		}
+		MarkRenderDynamicDataDirty();
+		UpdateComponentToWorld();
 	}
-	ENQUEUE_RENDER_COMMAND(URTClothMeshComponentTick)(
-	[this, DeltaTime](FRHICommandListImmediate &CmdList)
-	{
-		//ClothSystem->TickOnce(std::max(0.001f, std::min(DeltaTime, 0.05f)));
-		ClothSystem->TickOnce(0.005f);
-	});
-	HitBox->SetRelativeLocation((ClothSystem->BoundingBoxMax() + ClothSystem->BoundingBoxMin()) / 2);
-	HitBox->SetBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
-	// Need to send new data to render thread
-	MarkRenderDynamicDataDirty();
-	UpdateComponentToWorld();
 }
 
 // override scene proxy

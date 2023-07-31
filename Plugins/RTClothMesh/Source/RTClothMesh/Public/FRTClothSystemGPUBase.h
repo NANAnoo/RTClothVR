@@ -35,6 +35,12 @@ SHADER_PARAMETER(float, K_Collision)
 // collision spring D
 SHADER_PARAMETER(float, D_Collision)
 
+// Number of external colliders
+SHADER_PARAMETER(unsigned int, NumOfExColliders)
+
+// global damping
+SHADER_PARAMETER(float, GlobalDamping)
+
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 
 template <typename T>
@@ -125,6 +131,7 @@ protected:
 	void UpdateBendForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
 	void AssembleForce(FRHICommandList &RHICommands) const;
 	void VerletIntegration_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const;
+	void ExternalCollision_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands);
 	
 	// setup runtime variables, before tick
 	virtual void PrepareSimulation() override;
@@ -152,6 +159,7 @@ protected:
 
 	// Collision Structure
 	FRTComputeBuffer<FInnerCollisionBVHNode> InnerHitBVH;
+	FRTComputeBuffer<FRTClothCollider> ExColliders;
 	
 	FRTClothSimulationParameters SimParam;
 

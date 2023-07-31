@@ -190,8 +190,8 @@ struct FRTClothCollider {
 	constexpr static int FRTClothColliderCapsule = 1;
 	constexpr static int FRTClothColliderBox = 2;
 
-	FMatrix LocalToWorld = FMatrix::Identity;
-	FVector4 Velocity;
+	FMatrix ColliderToCloth = FMatrix::Identity;
+	FMatrix ClothToCollider = FMatrix::Identity;
 	union
 	{
 		float Radius;      // Sphere, Capsule
@@ -204,5 +204,36 @@ struct FRTClothCollider {
 	};
 	float HalfExtentZ; // Box
 	int Type = FRTClothColliderSphere;
+
+	FVector4 Aligment[3];
+	
+	bool Collision(FVector &Pos, FVector &Vel) const
+	{
+		switch (Type)
+		{
+		case FRTClothColliderBox:
+			{
+				// TODO add box collision
+			}
+			break;
+		case FRTClothColliderCapsule:
+			{
+				// TODO add capsule collision
+			}
+			break;
+		case FRTClothColliderSphere:
+		default:
+			if (Pos.Size() < Radius)
+			{
+				Pos.Normalize(); // Normal
+				Vel -= std::min(0.f, Vel | Pos) * Pos;
+				Pos *= (Radius + 1e-1);
+				return true;
+			}
+			break;
+		
+		}
+		return false;
+	}
 };
 

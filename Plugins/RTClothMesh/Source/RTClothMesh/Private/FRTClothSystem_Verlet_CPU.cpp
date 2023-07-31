@@ -24,6 +24,10 @@ void FRTClothSystem_Verlet_CPU::Acceleration()
 		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
 		Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
 	}
+	for (int i = 0; i < Masses.Num(); i ++)
+	{
+		Forces[i] += - M_Material.GlobalDamping * Velocities[i] * Masses[i];
+	}
 }
 
 void FRTClothSystem_Verlet_CPU::PrepareSimulation()
@@ -106,6 +110,8 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 		Pre_Positions[i] = Pos_Old;
 		Velocities[i] += Duration * Acc;
 	}
+	if (M_Material.EnableCollision)
+		SolveCollision(Pre_Positions, Mesh->Positions, Velocities, Duration);
 }
 
 

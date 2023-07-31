@@ -29,8 +29,8 @@ void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
 
 	int Index = ThreadId.x;
 	if (NumOfVertices <= Index) return;
-	
-	float3 Acc = (Forces[Index] * InvMasses[Index]);
+
+	float3 Acc = (Forces[Index] * InvMasses[Index]) - SimParams.GlobalDamping * Velocities[Index];
 	// effective calculate constraint here
 	int ConID = ConstraintMap[Index];
 	float A_0 = dot(ConstraintData[ConID], Acc);

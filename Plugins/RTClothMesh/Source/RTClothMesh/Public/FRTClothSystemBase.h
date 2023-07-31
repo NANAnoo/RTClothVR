@@ -38,10 +38,9 @@ struct FRTClothPhysicalMaterial
 	Real K_Collision;
 	Real D_Collision;
 
-	Real Friction;
+	Real GlobalDamping;
 	int EnableCollision;
 	int EnableInnerCollision;
-	int EnableFriction = 1;
 };
 
 class FRTClothSystemBase
@@ -71,18 +70,19 @@ public:
 		Constraints.Remove(Id);
 	}
 
-	void UpdateCollider(int32 ID, FRTClothCollider const&Collider)
+	void UpdateCollider(UPrimitiveComponent *Com, FRTClothCollider const&Collider)
 	{
-		Colliders.FindOrAdd(ID) = Collider;
+		Colliders.FindOrAdd(Com) = Collider;
 	}
 
-	void RemoveCollider(int32 ID)
+	void RemoveCollider(UPrimitiveComponent *Com)
 	{
-		Colliders.Remove(ID);
+		Colliders.Remove(Com);
 	}
 
-	// TODO: set up Collision bodies
-	// void AddCollider();
+	// update transform of Cloth to World
+	void UpdateTransform(FTransform const& ClothToWorld, float Duration);
+	
 
 	// update material
 	void UpdateMaterial(FRTClothPhysicalMaterial<float> const&M);
@@ -195,20 +195,21 @@ protected:
 	
 	FRTClothPhysicalMaterial<float> M_Material;
 	std::shared_ptr<FClothRawMesh> Mesh;
-
-	// forces and derivatives
+	
 	TArray<float> Masses;
 
 	// Constraints
 	TMap<uint32, FRTMatrix3> Constraints;
 
-	TMap<uint32, FRTClothCollider> Colliders;
+	TMap<UPrimitiveComponent *, FRTClothCollider> Colliders;
 
 	// Gravity
 	FVector Gravity = {0, 0, 0};
 
 	TArray<FVector> ExternalForces;
 	// center, radius
+
+	FVector ClothAttachedVelocity;
 
 	RTCloth::AABB CurrentBox;
 
@@ -227,6 +228,8 @@ protected:
 	// update triangle parameters
 	void UpdateTriangleProperties(TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
 	void AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities);
+
+	void SolveCollision(TArray<FVector> &Pre_Positions, TArray<FVector> &Positions, TArray<FVector> &Velocities, float Duration);
 
 	struct FHitSphereToAABB
 	{

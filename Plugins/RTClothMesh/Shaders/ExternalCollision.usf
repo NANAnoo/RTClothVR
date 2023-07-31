@@ -1,0 +1,64 @@
+﻿#pragma once
+#include </Engine/Public/Platform.ush>
+#include "FRTClothStructures.ush"
+
+uniform FClothSimulationParameterUB SimParams;
+
+StructuredBuffer<FRTClothCollider> ExColliders;
+
+// constraint map
+StructuredBuffer<int> ConstraintMap;
+
+// velocities of cloth mesh
+RWStructuredBuffer<float3> Velocities;
+// positions of cloth mesh
+RWStructuredBuffer<float3> Pre_Positions;
+RWStructuredBuffer<float3> Positions;
+
+void SphereCollision(FRTClothCollider Collider, int Index)
+{
+	// transform to collider space
+	float4 Pos_InColSpace_homo = mul(float4(Positions[Index], 1.f), Collider.ClothToCollider);
+	float3 Pos_InColSpace = (Pos_InColSpace_homo / Pos_InColSpace_homo[3]).xyz;
+	float3 Velocity_InColSpace = mul(float4(Velocities[Index], 0.f), Collider.ClothToCollider).xyz;
+
+	float Len = length(Pos_InColSpace);
+	if (Len < Collider.Radius_or_HalfExtentX)
+	{
+		float3 Normal = Pos_InColSpace / Len;
+		// update velocity that makes it parallel to the tangent plane
+		Velocity_InColSpace -= min(0.f, dot(Velocity_InColSpace, Normal)) * Normal;
+		// Move the point out 
+		Pos_InColSpace = Normal * (Collider.Radius_or_HalfExtentX + 1e-1);
+		// transform back
+		float4 Pos_InClothSpace_homo = mul(float4(Pos_InColSpace, 1.f), Collider.ColliderToCloth);
+		float3 NewPos = (Pos_InClothSpace_homo / Pos_InClothSpace_homo[3]).xyz;
+		float3 NewVel = mul(float4(Velocity_InColSpace, 0.f), Collider.ColliderToCloth).xyz;
+		Positions[Index] = NewPos;
+		Velocities[Index] = NewVel;
+		Pre_Positions[Index] = NewPos - NewVel * SimParams.DT;
+	}
+}
+
+[numthreads(16, 1, 1)]
+void Solve(uint3 ThreadId : SV_DispatchThreadID)
+{
+	uint NumOfVertices, NumOfColliders, _;
+	Positions.GetDimensions(NumOfVertices, _);
+
+	uint Index = ThreadId.x;
+	if (NumOfVertices <= Index || ConstraintMap[Index] != 0) return;
+	ExColliders.GetDimensions(NumOfColliders, _);
+	NumOfColliders = min(NumOfColliders, SimParams.NumOfExColliders);
+	
+	for (uint i = 0; i < NumOfColliders; i ++)
+	{
+		FRTClothCollider Collider = ExColliders[i];
+		if (Collider.Type == FRTClothColliderSphere) {
+			SphereCollision(Collider, Index);
+		} else
+		{
+			
+		}
+	}
+}

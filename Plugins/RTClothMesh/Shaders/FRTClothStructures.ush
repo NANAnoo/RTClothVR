@@ -43,4 +43,34 @@ struct FClothSimulationParameterUB
 	// Inner collision
 	float K_Collision;
 	float D_Collision;
+
+	// Num of external colliders
+	uint NumOfExColliders;
+
+	// Global damping
+	float GlobalDamping;
+};
+
+#define FRTClothColliderSphere 0
+#define FRTClothColliderCapsule 1
+#define FRTClothColliderBox 2
+
+struct FRTClothCollider {
+	matrix ColliderToCloth;
+	matrix ClothToCollider;
+	// union
+	// {
+	// 	float Radius;      // Sphere, Capsule
+	// 	float HalfExtentX; // Box
+	// };
+	float Radius_or_HalfExtentX;
+	// union
+	// {
+	// 	float HalfHeight;  // Capsule
+	// 	float HalfExtentY; // Box
+	// };
+	float HalfHeight_or_HalfExtentY;
+	float HalfExtentZ; // Box
+	int Type;
+	float4 Aligment[3];
 };

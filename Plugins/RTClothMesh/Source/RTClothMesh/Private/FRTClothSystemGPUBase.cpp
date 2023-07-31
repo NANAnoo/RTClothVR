@@ -5,13 +5,15 @@
 #include "FVerletIntegratorCS.h"
 #include "FRTBendForceCS.h"
 #include "FInnerCollisionForcesCS.h"
+#include "FExternalCollisonCS.h"
 
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRTClothSimulationParameters, "RTClothMaterialUB");
-
+#define MAX_EXTERNAL_COLLIDERS 10
 void FRTClothSystemGPUBase::PrepareSimulation()
 {
 	// set up simulation variables
 	Indices.Reserve(this->Mesh->Indices.Num());
+	ExColliders.SetNum(MAX_EXTERNAL_COLLIDERS);
 	for (auto const &Idx : this->Mesh->Indices) Indices.Add(Idx);
 	ConditionBasis.Reserve(this->Mesh->Indices.Num() / 3);
 	InnerHitBVH.SetNum(this->Mesh->Indices.Num() / 3 * 2 - 1);
@@ -152,6 +154,7 @@ void FRTClothSystemGPUBase::PrepareSimulation()
 		Bend_PreSumOfRefIndices.InitRHI();
 		SharedEdgeUVLengths.InitRHI();
 		InnerHitBVH.InitRHI();
+		ExColliders.InitRHI();
 	});
 	FlushRenderingCommands();
 }
@@ -176,6 +179,8 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		SimParam.InitTheta = M_Material.InitTheta;
 		SimParam.K_Collision = M_Material.K_Collision;
 		SimParam.D_Collision = M_Material.D_Collision;
+		SimParam.NumOfExColliders = static_cast<unsigned>(Colliders.Num());
+		SimParam.GlobalDamping = M_Material.GlobalDamping;
 		auto const SimParamUBO = FRTClothSimulationParameters::CreateUniformBuffer(SimParam, UniformBuffer_SingleFrame);
 		SetupExternalForces_RenderThread();
 		if (M_Material.EnableInnerCollision)
@@ -191,6 +196,11 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		UpdateBendForce_RenderThread(SimParamUBO, RHICommands);
 		AssembleForce(RHICommands);
 		VerletIntegration_RenderThread(SimParamUBO, RHICommands);
+		if (M_Material.EnableCollision && Colliders.Num() > 0)
+		{
+			ExternalCollision_RenderThread(SimParamUBO, RHICommands);
+		}
+		// Read back position data
 		auto const* data = RHILockStructuredBuffer(Positions.RHI, 0,  Positions.GetDataSize(), RLM_ReadOnly);
 		FMemory::Memcpy(Mesh->Positions.GetData(), data, Positions.GetDataSize());
 		RHIUnlockStructuredBuffer(Positions.RHI);
@@ -283,6 +293,32 @@ void FRTClothSystemGPUBase::VerletIntegration_RenderThread(FUniformBufferRHIRef 
 			
 	DispatchComputeShader(RHICommands, VerletCSRef, Masses.Num() / 16 + 1, 1, 1);
 }
+
+void FRTClothSystemGPUBase::ExternalCollision_RenderThread(FUniformBufferRHIRef const& UBO, FRHICommandList& RHICommands)
+{
+	TArray<FRTClothCollider> ExternalColliders;
+	Colliders.GenerateValueArray(ExternalColliders);
+	if (ExternalColliders.Num() < MAX_EXTERNAL_COLLIDERS)
+	{
+		ExternalColliders.AddUninitialized(MAX_EXTERNAL_COLLIDERS - ExternalColliders.Num());
+	}
+	ExColliders.UploadData(ExternalColliders);
+
+	// call compute shader
+	TShaderMapRef<FExternalCollisionCS> const ExternalCollisionCS(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
+	FRHIComputeShader* CS = ExternalCollisionCS.GetComputeShader();
+	
+	RHICommands.SetShaderUniformBuffer(CS, ExternalCollisionCS->SimParams.GetBaseIndex(), UBO);
+	RHICommands.SetShaderResourceViewParameter(CS, ExternalCollisionCS->ExColliders.GetBaseIndex(), ExColliders.SRV);
+	RHICommands.SetShaderResourceViewParameter(CS, ExternalCollisionCS->ConstraintMap.GetBaseIndex(), ConstraintMap.SRV);
+	RHICommands.SetUAVParameter(CS, ExternalCollisionCS->Velocities.GetBaseIndex(), Velocities.UAV);
+	RHICommands.SetUAVParameter(CS, ExternalCollisionCS->Pre_Positions.GetBaseIndex(), Pre_Positions.UAV);
+	RHICommands.SetUAVParameter(CS, ExternalCollisionCS->Positions.GetBaseIndex(), Positions.UAV);
+	RHICommands.SetComputeShader(CS);
+	
+	DispatchComputeShader(RHICommands, ExternalCollisionCS, Masses.Num() / 16 + 1, 1, 1);
+}
+
 
 void FRTClothSystemGPUBase::SetupExternalForces_RenderThread()
 {

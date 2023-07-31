@@ -62,6 +62,9 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
         Velocity[i] += DV;
         Mesh->Positions[i] += Duration * Velocity[i];
     }
+    TArray<FVector> Pre_Positions;
+    if (M_Material.EnableCollision)
+        SolveCollision(Pre_Positions, Mesh->Positions, Velocity, Duration);
 }
 
 void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
@@ -69,10 +72,6 @@ void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
     for (int32 i = 0; i < Forces.Num(); i ++)
     {
         Forces[i] = Gravity * Masses[i];
-    }
-    for (auto &D : DampingForces)
-    {
-        D.Set(0, 0, 0);
     }
     Df_Dx.SetValues(0.f);
     Df_Dv.SetValues(0.f);
@@ -103,6 +102,10 @@ void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
         Con.ComputeDerivatives(M_Material.K_Stretch, M_Material.D_Stretch, Df_Dx, Df_Dx, Df_Dv);
     }
     
+    for (int i = 0; i < Masses.Num(); i ++)
+    {
+        Forces[i] += - M_Material.GlobalDamping * Velocity[i] * Masses[i];
+    }
 }
 
 void FRTClothSystem_ImplicitIntegration_CPU::PrepareSimulation()
@@ -149,7 +152,6 @@ void FRTClothSystem_ImplicitIntegration_CPU::PrepareSimulation()
     // set up runtime simulation variables
     Velocity.SetNumZeroed(Mesh->Positions.Num());
     Forces.SetNumZeroed(Mesh->Positions.Num());
-    DampingForces.SetNumZeroed(Mesh->Positions.Num());
 
     // set up sparse matrix
     Df_Dx.UpdateSize(Mesh->Positions.Num() * 3);

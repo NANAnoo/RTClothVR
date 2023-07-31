@@ -29,6 +29,10 @@ void FRTClothSystem_Leapfrog_CPU::Acceleration()
 		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
 		Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
 	}
+	for (int i = 0; i < Masses.Num(); i ++)
+	{
+		Forces[i] += - M_Material.GlobalDamping * Velocities[i] * Masses[i];
+	}
 }
 
 void FRTClothSystem_Leapfrog_CPU::PrepareSimulation()
@@ -101,6 +105,9 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 		Mesh->Positions[i] += Velocities_Half[i] * Duration;
 		Velocities[i] += Duration * Pre_As[i];
 	}
+	TArray<FVector> Pre_Positions;
+	if (M_Material.EnableCollision)
+		SolveCollision(Pre_Positions, Mesh->Positions, Velocities, Duration);
 
 	// Get new acc and update V_{i+1}
 	{

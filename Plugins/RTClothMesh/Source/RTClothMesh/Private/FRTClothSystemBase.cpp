@@ -61,6 +61,14 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
     ExternalForces.SetNumZeroed(Mesh->Positions.Num());
     TriangleBoundingSpheres.SetNumZeroed(Mesh->Indices.Num() / 3);
     MakeDirectedEdgeModel();
+    // for (int i = 0; i < other_half_of_edge.Num(); i ++)
+    // {
+    //     if (other_half_of_edge[i] == UNKNOWN_HALF_EDGE)
+    //     {
+    //         AddConstraint( toVertexIndexOfHalfEdge(i), {});
+    //         AddConstraint( fromVertexIndexOfHalfEdge(i), {});
+    //     }
+    // }
     // update masses
     for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)
     {
@@ -149,6 +157,18 @@ void FRTClothSystemBase::UpdateTriangleProperties(TArray<FVector> const&Position
     }
 }
 
+void FRTClothSystemBase::UpdateTransform(FTransform const& ClothToWorld, float Duration)
+{
+    FVector const Pre_pos =  Mesh->LocalToWorld.GetLocation();
+    ClothAttachedVelocity = (ClothToWorld.GetLocation() - Pre_pos) / Duration;
+    for (auto &Pair : Colliders)
+    {
+        Pair.Value.ClothToCollider =  ClothToWorld.ToMatrixNoScale() * Pair.Key->GetComponentToWorld().ToInverseMatrixWithScale();
+        Pair.Value.ColliderToCloth =  Pair.Value.ClothToCollider.Inverse();
+    }
+    Gravity = ClothToWorld.InverseTransformVector({0, 0, -100});
+    Mesh->LocalToWorld = ClothToWorld;
+}
 void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities)
 {
     // // build bvh tree
@@ -184,6 +204,35 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
                     // Forces[F.vertex_index[2]] += f;
                 }
             });
+        }
+    }
+}
+
+void FRTClothSystemBase::SolveCollision(TArray<FVector>& Pre_Positions, TArray<FVector>& Positions, TArray<FVector>& Velocities, float Duration)
+{
+    for (auto &Pair : Colliders)
+    {
+        FMatrix const& ClothToCollider = Pair.Value.ClothToCollider;
+        FMatrix const& ColliderToCloth = Pair.Value.ColliderToCloth;
+        for (int i = 0; i < Positions.Num(); i ++)
+        {
+            if (!Constraints.Contains(i))
+            {
+                // transform cloth positions and velocities to collider space
+                FVector Vel = ClothToCollider.TransformVector(Velocities[i]);
+                FVector4 Pos_W = ClothToCollider.TransformPosition(Positions[i]);
+                FVector Pos = (Pos_W / Pos_W.W);
+                if (Pair.Value.Collision(Pos, Vel))
+                {
+                    // transform velocity and position back to cloth space
+                    Velocities[i] = ColliderToCloth.TransformVector(Vel);
+                    Pos_W = ColliderToCloth.TransformPosition(Pos);
+                    Positions[i] = (Pos_W / Pos_W.W);
+                    if (Pre_Positions.Num() > 0)
+                        // for Integrator that needs previous positions
+                        Pre_Positions[i] = Positions[i] - Velocities[i] * Duration;
+                }
+            }
         }
     }
 }
