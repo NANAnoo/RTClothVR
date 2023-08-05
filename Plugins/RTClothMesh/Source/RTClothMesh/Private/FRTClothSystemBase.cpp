@@ -61,14 +61,7 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
     ExternalForces.SetNumZeroed(Mesh->Positions.Num());
     TriangleBoundingSpheres.SetNumZeroed(Mesh->Indices.Num() / 3);
     MakeDirectedEdgeModel();
-    // for (int i = 0; i < other_half_of_edge.Num(); i ++)
-    // {
-    //     if (other_half_of_edge[i] == UNKNOWN_HALF_EDGE)
-    //     {
-    //         AddConstraint( toVertexIndexOfHalfEdge(i), {});
-    //         AddConstraint( fromVertexIndexOfHalfEdge(i), {});
-    //     }
-    // }
+
     // update masses
     for (int32 FaceID = 0; FaceID < Mesh->Indices.Num(); FaceID += 3)
     {
@@ -92,6 +85,25 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
             CurrentBox.Min[i] = std::min(CurrentBox.Min[i], pos[i]);
         }
     }
+    // // For T shirt constriants
+    // auto Mid = (CurrentBox.Max + CurrentBox.Min) / 2;
+    // for (int i = 0; i < other_half_of_edge.Num(); i ++)
+    // {
+    //     if (other_half_of_edge[i] == UNKNOWN_HALF_EDGE)
+    //     {
+    //         auto V1 = toVertexIndexOfHalfEdge(i);
+    //         auto V2 = fromVertexIndexOfHalfEdge(i);
+    //         if (Mesh->Positions[V1].Y < Mid.Y)
+    //         {
+    //             AddConstraint( V1,  {});
+    //         }
+    //         if (Mesh->Positions[V2].Y < Mid.Y)
+    //         {
+    //             AddConstraint( V2, {});
+    //         }
+    //         
+    //     }
+    // }
 }
 
 void FRTClothSystemBase::MakeDirectedEdgeModel()
