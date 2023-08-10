@@ -7,6 +7,21 @@
 #include "FInnerCollisionForcesCS.h"
 #include "FExternalCollisonCS.h"
 
+// DECLARE_STATS_GROUP(TEXT("RTCloth(Verlet_GPU)"), STATGROUP_RTCloth_GPU, STATCAT_Advanced);
+// DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_GPU, STATGROUP_RTCloth_GPU);
+// DECLARE_CYCLE_STAT(TEXT("StretchConditions"), StretchConditions_GPU,STATGROUP_RTCloth_GPU);
+// DECLARE_CYCLE_STAT(TEXT("ShearConditions"), ShearConditions_GPU,STATGROUP_RTCloth_GPU);
+// DECLARE_CYCLE_STAT(TEXT("BendConditions"), BendConditions_GPU,STATGROUP_RTCloth_GPU);
+// DECLARE_CYCLE_STAT(TEXT("Integration"), Integration_GPU,STATGROUP_RTCloth_GPU);
+DECLARE_GPU_STAT_NAMED(OneFrameCost, TEXT("RTCLOTH_OneFrameCost_GPU"))
+DECLARE_GPU_STAT_NAMED(Integration_GPU, TEXT("RTCLOTH_Integration_GPU"))
+DECLARE_GPU_STAT_NAMED(StretchShearConditions_GPU, TEXT("RTCLOTH_StretchShearConditions_GPU"))
+DECLARE_GPU_STAT_NAMED(StretchShear_Assemble, TEXT("RTCLOTH_StretchShear_Assemble_GPU"))
+DECLARE_GPU_STAT_NAMED(Bend_GPU, TEXT("RTCLOTH_Bend_GPU"))
+DECLARE_GPU_STAT_NAMED(Bend_Assemble, TEXT("RTCLOTH_Bend_Assemble_GPU"))
+DECLARE_GPU_STAT_NAMED(SelfCollision, TEXT("RTCLOTH_SelfCollision_GPU"))
+DECLARE_GPU_STAT_NAMED(ClothObjectCollision, TEXT("RTCLOTH_ClothObjectCollision_GPU"))
+
 IMPLEMENT_GLOBAL_SHADER_PARAMETER_STRUCT(FRTClothSimulationParameters, "RTClothMaterialUB");
 #define MAX_EXTERNAL_COLLIDERS 10
 void FRTClothSystemGPUBase::PrepareSimulation()
@@ -166,6 +181,7 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 	ENQUEUE_RENDER_COMMAND(FRTClothSystemGPUBase_TickOnce)(
 	[this, Duration](FRHICommandList &RHICommands)
 	{
+		SCOPED_GPU_STAT(RHICommands, OneFrameCost)
 		// set up uniform data
 		SimParam.D_Bend = M_Material.D_Bend;
 		SimParam.D_Shear = M_Material.D_Shear;
@@ -180,7 +196,10 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 		SimParam.K_Collision = M_Material.K_Collision;
 		SimParam.D_Collision = M_Material.D_Collision;
 		SimParam.NumOfExColliders = static_cast<unsigned>(Colliders.Num());
-		SimParam.GlobalDamping = M_Material.GlobalDamping;
+		SimParam.AirFriction = M_Material.AirFriction;
+		SimParam.VelocityConstraint = DeltaClothAttachedVelocity;
+		SimParam.InvDT = 1.0 / Duration;
+		SimParam.WindVelocity = WindVelocity;
 		auto const SimParamUBO = FRTClothSimulationParameters::CreateUniformBuffer(SimParam, UniformBuffer_SingleFrame);
 		SetupExternalForces_RenderThread();
 		if (M_Material.EnableInnerCollision)
@@ -209,6 +228,7 @@ void FRTClothSystemGPUBase::TickOnce(float Duration)
 
 void FRTClothSystemGPUBase::InnerCollisionForces_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
 {
+	SCOPED_GPU_STAT(RHICommands, SelfCollision)
 	TShaderMapRef<FInnerCollisionForcesCS> const InnerCollisionCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	FRHIComputeShader* CS = InnerCollisionCSRef.GetComputeShader();
 	RHICommands.SetShaderUniformBuffer(CS, InnerCollisionCSRef->SimParams.GetBaseIndex(), UBO);
@@ -225,6 +245,7 @@ void FRTClothSystemGPUBase::InnerCollisionForces_RenderThread(FUniformBufferRHIR
 
 void FRTClothSystemGPUBase::UpdateStretchAndShearForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
 {
+	SCOPED_GPU_STAT(RHICommands, StretchShearConditions_GPU)
 	TShaderMapRef<FStretchShearConditionCS> const SSForceCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	FRHIComputeShader* CS = SSForceCSRef.GetComputeShader();
 	RHICommands.SetShaderUniformBuffer(CS, SSForceCSRef->SimParams.GetBaseIndex(), UBO);
@@ -239,6 +260,7 @@ void FRTClothSystemGPUBase::UpdateStretchAndShearForce_RenderThread(FUniformBuff
 void FRTClothSystemGPUBase::UpdateBendForce_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
 {
 	// second pass, bend forces
+	SCOPED_GPU_STAT(RHICommands, Bend_GPU)
 	TShaderMapRef<FRTBendForceCS> const BendForcesCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	FRHIComputeShader* CS = BendForcesCSRef.GetComputeShader();
 			
@@ -257,26 +279,33 @@ void FRTClothSystemGPUBase::AssembleForce(FRHICommandList &RHICommands) const
 {
 	TShaderMapRef<FLocalForceAssemplerCS> const ForceAssembleCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	FRHIComputeShader* CS = ForceAssembleCSRef.GetComputeShader();
-	// Stretch and shear
-	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
-	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
-	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), PreSumOfRefIndices.SRV);
-	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), SubForceIndices.SRV);
+	{
+		SCOPED_GPU_STAT(RHICommands, StretchShear_Assemble)
+		// Stretch and shear
+		RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), LocalForces.UAV);
+		RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
+		RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), PreSumOfRefIndices.SRV);
+		RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), SubForceIndices.SRV);
 			
-	RHICommands.SetComputeShader(CS);
-	DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
-	// Bend
-	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), Bend_LocalForces.UAV);
-	RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
-	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), Bend_PreSumOfRefIndices.SRV);
-	RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), Bend_SubForceIndices.SRV);
+		RHICommands.SetComputeShader(CS);
+		DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
+	}
+		// Bend
+	{
+		SCOPED_GPU_STAT(RHICommands, Bend_Assemble)
+		RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->LocalForces.GetBaseIndex(), Bend_LocalForces.UAV);
+		RHICommands.SetUAVParameter(CS, ForceAssembleCSRef->Forces.GetBaseIndex(), GlobalForces.UAV);
+		RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->PreSumOfRefIndices.GetBaseIndex(), Bend_PreSumOfRefIndices.SRV);
+		RHICommands.SetShaderResourceViewParameter(CS, ForceAssembleCSRef->SubForceIndices.GetBaseIndex(), Bend_SubForceIndices.SRV);
 			
-	RHICommands.SetComputeShader(CS);
-	DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
+		RHICommands.SetComputeShader(CS);
+		DispatchComputeShader(RHICommands, ForceAssembleCSRef, Masses.Num() / 16 + 1, 1, 1);
+	}
 }
 
 void FRTClothSystemGPUBase::VerletIntegration_RenderThread(FUniformBufferRHIRef const&UBO, FRHICommandList &RHICommands) const
 {
+	SCOPED_GPU_STAT(RHICommands, Integration_GPU)
 	// final Pass, update Positions
 	TShaderMapRef<FVerletIntegratorCS> const VerletCSRef(GetGlobalShaderMap(ERHIFeatureLevel::SM5));
 	FRHIComputeShader* CS = VerletCSRef.GetComputeShader();
@@ -296,6 +325,7 @@ void FRTClothSystemGPUBase::VerletIntegration_RenderThread(FUniformBufferRHIRef 
 
 void FRTClothSystemGPUBase::ExternalCollision_RenderThread(FUniformBufferRHIRef const& UBO, FRHICommandList& RHICommands)
 {
+	SCOPED_GPU_STAT(RHICommands, ClothObjectCollision)
 	TArray<FRTClothCollider> ExternalColliders;
 	Colliders.GenerateValueArray(ExternalColliders);
 	if (ExternalColliders.Num() < MAX_EXTERNAL_COLLIDERS)

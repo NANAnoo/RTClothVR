@@ -38,7 +38,7 @@ struct FRTClothPhysicalMaterial
 	Real K_Collision;
 	Real D_Collision;
 
-	Real GlobalDamping;
+	Real AirFriction;
 	int EnableCollision;
 	int EnableInnerCollision;
 };
@@ -58,7 +58,12 @@ public:
 
 	FORCEINLINE void SetGravity(FVector const&G)
 	{
-		Gravity = G;
+		WorldSpaceGravity = G;
+	}
+
+	FORCEINLINE void SetWind(FVector const&Wind)
+	{
+		WorldSpaceWindVelocity = Wind;
 	}
 
 	void AddConstraint(uint32 Id, FClothConstraint const& Constraint)
@@ -204,12 +209,16 @@ protected:
 	TMap<UPrimitiveComponent *, FRTClothCollider> Colliders;
 
 	// Gravity
+	FVector WorldSpaceGravity = {0, 0, 0};
 	FVector Gravity = {0, 0, 0};
 
 	TArray<FVector> ExternalForces;
 	// center, radius
 
 	FVector ClothAttachedVelocity;
+	FVector DeltaClothAttachedVelocity;
+	FVector WorldSpaceWindVelocity;
+	FVector WindVelocity;
 
 	RTCloth::AABB CurrentBox;
 

@@ -2,31 +2,42 @@
 
 DECLARE_STATS_GROUP(TEXT("RTCloth(Verlet)"), STATGROUP_RTCloth_Verlet, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Verlet, STATGROUP_RTCloth_Verlet);
-DECLARE_CYCLE_STAT(TEXT("Inner Collision"), Collision_Verlet,STATGROUP_RTCloth_Verlet);
-DECLARE_CYCLE_STAT(TEXT("GetAcceleration"), Acceleration_Verlet,STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("StretchConditions"), StretchConditions_Verlet,STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("ShearConditions"), ShearConditions_Verlet,STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("BendConditions"), BendConditions_Verlet,STATGROUP_RTCloth_Verlet);
+DECLARE_CYCLE_STAT(TEXT("Integration"), Integration_Verlet,STATGROUP_RTCloth_Verlet);
 
 void FRTClothSystem_Verlet_CPU::Acceleration()
 {
 	// calculate forces
-	for (auto &Con : StretchConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(StretchConditions_Verlet)
+		for (auto &Con : StretchConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+		}
 	}
-	for (auto &Con : ShearConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		// Serious numerical un-stability meet while using original Shader Damping
-		Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(ShearConditions_Verlet)
+		for (auto &Con : ShearConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			// Serious numerical un-stability meet while using original Shader Damping
+			Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, Forces);
+		}
 	}
-	for (auto &Con : BendConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(BendConditions_Verlet)
+		for (auto &Con : BendConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
+		}
 	}
 	for (int i = 0; i < Masses.Num(); i ++)
 	{
-		Forces[i] += - M_Material.GlobalDamping * Velocities[i] * Masses[i];
+		Forces[i] += - M_Material.AirFriction * (Velocities[i] - WindVelocity) * Masses[i];
 	}
 }
 
@@ -85,30 +96,27 @@ void FRTClothSystem_Verlet_CPU::TickOnce(float Duration)
 	{
 		Forces[i] = Masses[i] * Gravity;
 	}
+	if (M_Material.EnableInnerCollision)
 	{
-		if (M_Material.EnableInnerCollision)
-		{
-			SCOPE_CYCLE_COUNTER(Collision_Verlet);
-			UpdateTriangleProperties(Mesh->Positions, Velocities);
-			AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
-		}
+		UpdateTriangleProperties(Mesh->Positions, Velocities);
+		AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
 	}
+	Acceleration();
+	// integration
 	{
-		SCOPE_CYCLE_COUNTER(Acceleration_Verlet);
-		Acceleration();
-	}
-	// Update Positions
-	for (int32 i = 0; i < Masses.Num(); i ++)
-	{
-		auto Acc =  Forces[i] / Masses[i];
-		if (Constraints.Contains(i))
+		SCOPE_CYCLE_COUNTER(Integration_Verlet)
+		for (int32 i = 0; i < Masses.Num(); i ++)
 		{
-			Acc = Constraints[i] * Acc;
+			auto Acc =  Forces[i] / Masses[i] + DeltaClothAttachedVelocity / Duration;
+			if (Constraints.Contains(i))
+			{
+				Acc = Constraints[i] * Acc;
+			}
+			auto const Pos_Old = Mesh->Positions[i];
+			Mesh->Positions[i] = 2 * Mesh->Positions[i] - Pre_Positions[i] + Acc * (Duration * Duration);
+			Velocities[i] = (Mesh->Positions[i] - Pos_Old) / (2 * Duration);
+			Pre_Positions[i] = Pos_Old;
 		}
-		auto const Pos_Old = Mesh->Positions[i];
-		Mesh->Positions[i] = 2 * Mesh->Positions[i] - Pre_Positions[i] + Acc * (Duration * Duration);
-		Pre_Positions[i] = Pos_Old;
-		Velocities[i] += Duration * Acc;
 	}
 	if (M_Material.EnableCollision)
 		SolveCollision(Pre_Positions, Mesh->Positions, Velocities, Duration);

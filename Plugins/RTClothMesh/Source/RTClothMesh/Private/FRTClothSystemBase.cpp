@@ -7,7 +7,8 @@ using namespace RTCloth;
 
 DECLARE_STATS_GROUP(TEXT("RTCloth(Collision)"), STATGROUP_RTCloth_Collision, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("Build BVH"), STAT_BUILD_BVH, STATGROUP_RTCloth_Collision);
-DECLARE_CYCLE_STAT(TEXT("Solve Collision"), STAT_SOLVE_COLLISION,STATGROUP_RTCloth_Collision);
+DECLARE_CYCLE_STAT(TEXT("Solve Self Collision"), STAT_SOLVE_Self_COLLISION,STATGROUP_RTCloth_Collision);
+DECLARE_CYCLE_STAT(TEXT("Solve External Collision"), STAT_SOLVE_External_COLLISION,STATGROUP_RTCloth_Collision);
 
 void FRTClothSystemBase::Init (
 	std::shared_ptr<FClothRawMesh> const& AMesh,
@@ -172,13 +173,17 @@ void FRTClothSystemBase::UpdateTriangleProperties(TArray<FVector> const&Position
 void FRTClothSystemBase::UpdateTransform(FTransform const& ClothToWorld, float Duration)
 {
     FVector const Pre_pos =  Mesh->LocalToWorld.GetLocation();
-    ClothAttachedVelocity = (ClothToWorld.GetLocation() - Pre_pos) / Duration;
+    FVector newClothAttachedVelocity = (ClothToWorld.GetLocation() - Pre_pos) / Duration;
     for (auto &Pair : Colliders)
     {
         Pair.Value.ClothToCollider =  ClothToWorld.ToMatrixNoScale() * Pair.Key->GetComponentToWorld().ToInverseMatrixWithScale();
         Pair.Value.ColliderToCloth =  Pair.Value.ClothToCollider.Inverse();
     }
-    Gravity = ClothToWorld.InverseTransformVector({0, 0, -100});
+    Gravity = ClothToWorld.InverseTransformVector(WorldSpaceGravity);
+    WindVelocity = ClothToWorld.InverseTransformVector(WorldSpaceWindVelocity);
+    newClothAttachedVelocity = -ClothToWorld.InverseTransformVector(newClothAttachedVelocity);
+    DeltaClothAttachedVelocity = (newClothAttachedVelocity - ClothAttachedVelocity);
+    ClothAttachedVelocity = newClothAttachedVelocity;
     Mesh->LocalToWorld = ClothToWorld;
 }
 void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArray<FVector> const&Positions, TArray<FVector> const&Velocities)
@@ -192,7 +197,7 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
         Root = FInnerCollisionBVHNode::BuildFrom(TriangleBoundingSpheres, BVH_Tree, 0, TriangleBoundingSpheres.Num() - 1);
     }
     {
-        SCOPE_CYCLE_COUNTER(STAT_SOLVE_COLLISION);
+        SCOPE_CYCLE_COUNTER(STAT_SOLVE_Self_COLLISION);
         for (int V = 0; V < Mesh->Positions.Num(); V ++)
         {
             auto P = Positions[V];
@@ -210,10 +215,6 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
                     C_P.Normalize();
                     auto const f = Masses[V] * (C_P * (Len - Dis) * M_Material.K_Collision - (Velocities[V] - CenterV) * M_Material.D_Collision) ;
                     Forces[V] += f;
-                    // f = f / (-3);
-                    // Forces[F.vertex_index[0]] += f;
-                    // Forces[F.vertex_index[1]] += f;
-                    // Forces[F.vertex_index[2]] += f;
                 }
             });
         }
@@ -222,6 +223,7 @@ void FRTClothSystemBase::AddCollisionSpringForces(TArray<FVector> &Forces, TArra
 
 void FRTClothSystemBase::SolveCollision(TArray<FVector>& Pre_Positions, TArray<FVector>& Positions, TArray<FVector>& Velocities, float Duration)
 {
+    SCOPE_CYCLE_COUNTER(STAT_SOLVE_External_COLLISION);
     for (auto &Pair : Colliders)
     {
         FMatrix const& ClothToCollider = Pair.Value.ClothToCollider;

@@ -238,6 +238,7 @@ URTClothMeshComponent::URTClothMeshComponent(const FObjectInitializer& ObjectIni
 void URTClothMeshComponent::OnRegister()
 {
 	Super::OnRegister();
+	// Get Original Mesh Data and Materials
 	TArray<UStaticMeshComponent*> Components;
 	GetOwner()->GetComponents<UStaticMeshComponent>(Components);
 	if (Components.Num() > 0)
@@ -272,16 +273,18 @@ void URTClothMeshComponent::OnRegister()
 				case GPU_Verlet:ClothSystem = std::make_unique<FRTClothSystemGPUBase>(); break;
 				default:ClothSystem = std::make_unique<FRTClothSystem_Verlet_CPU>();
 			}
-			
-			ClothSystem->AddConstraint(1, {});
+
+			int const Line = 0;
+			ClothSystem->AddConstraint(Line, {});
 			for (int i = 0; i < ClothMesh->Positions.Num(); i ++)
 			{
-				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[1].Z)
+				if (ClothMesh->Positions[i].Z == ClothMesh->Positions[Line].Z)
 				{
 					ClothSystem->AddConstraint(i, {});
 				}
 			}
 			ClothSystem->SetGravity({0, 0, -100});
+			ClothSystem->SetWind(WindVelocity);
 			 
 			ClothSystem->Init(ClothMesh,
 				{
@@ -289,7 +292,7 @@ void URTClothMeshComponent::OnRegister()
 					K_Stretch, D_Stretch,
 					K_Shear, D_Shear,
 					Rest_U, Rest_V, Density, InitTheta / 180 * PI
-					,K_Collision,D_Collision, GlobalDamping, EnableCollision, EnableInnerCollision}
+					,K_Collision,D_Collision, AirFriction, EnableCollision, EnableInnerCollision}
 				);
 
 			// add a hit box to perform collision from UE4 objects
@@ -394,9 +397,13 @@ void URTClothMeshComponent::OnOverLapEnd(UPrimitiveComponent* OverlappedComponen
 bool URTClothMeshComponent::SetupCloth_CPU(UStaticMesh *Mesh) const
 {
 	const auto& LODResource = Mesh->GetRenderData()->LODResources[0];
+	// vertex buffer
 	const auto& VB = LODResource.VertexBuffers.PositionVertexBuffer;
+	// tangents & texture coordinates & vertex color buffer
 	const auto& SVB = LODResource.VertexBuffers.StaticMeshVertexBuffer;
+	// index buffer
 	const auto& IB = LODResource.IndexBuffer;
+	
 	auto const NumVertex = VB.GetNumVertices();
 
 	if ( VB.GetVertexData() != nullptr &&

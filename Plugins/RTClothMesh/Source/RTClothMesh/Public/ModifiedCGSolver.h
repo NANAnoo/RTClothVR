@@ -16,9 +16,9 @@ public:
 		ConstraintMats = Mats;
 	}
 
-	virtual void UpdateVelocityConstraints(TArray<float> const& Cons) override
+	virtual void UpdateVelocityConstraints(FVector const& Vel) override
 	{
-		VelConstrains = Cons;
+		VelConstraint = Vel;
 	}
 	
 private:
@@ -28,7 +28,7 @@ private:
 	
 	TArray<uint32> ConstraintIds;
 	TArray<FRTMatrix3> ConstraintMats;
-	TArray<float> VelConstrains;
+	FVector VelConstraint;
 
 	// Precondition
 	TArray<float> P;

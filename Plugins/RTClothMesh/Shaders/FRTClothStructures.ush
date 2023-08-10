@@ -23,7 +23,6 @@ struct FClothSimulationParameterUB
 	// for bend condition
 	float K_Bend;
 	float D_Bend;
-
 	// for stretch condition
 	float K_Stretch;
 	float D_Stretch;
@@ -31,24 +30,31 @@ struct FClothSimulationParameterUB
 	// for shear condition
 	float K_Shear;
 	float D_Shear;
-
 	// rest U V
 	float Rest_U;
 	float Rest_V;
 
 	// simulation parameters
 	float DT; // duration
-	float InitTheta;
-
+	// 1.f / dt
+	float InvDT;
 	// Inner collision
 	float K_Collision;
 	float D_Collision;
 
+	float InitTheta;
 	// Num of external colliders
 	uint NumOfExColliders;
-
-	// Global damping
-	float GlobalDamping;
+	// air friction damping
+	float AirFriction;
+	float padding1;
+	
+	// velocity constraint
+	float3 VelocityConstraint;
+	float padding2;
+	// wind velocity
+	float3 WindVelocity;
+	float padding3;
 };
 
 #define FRTClothColliderSphere 0

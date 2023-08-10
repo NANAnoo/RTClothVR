@@ -30,7 +30,7 @@ void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
 	int Index = ThreadId.x;
 	if (NumOfVertices <= Index) return;
 
-	float3 Acc = (Forces[Index] * InvMasses[Index]) - SimParams.GlobalDamping * Velocities[Index];
+	float3 Acc = (Forces[Index] * InvMasses[Index]) - SimParams.AirFriction * (Velocities[Index] - SimParams.WindVelocity) + SimParams.VelocityConstraint * SimParams.InvDT;
 	// effective calculate constraint here
 	int ConID = ConstraintMap[Index];
 	float A_0 = dot(ConstraintData[ConID], Acc);
@@ -44,7 +44,7 @@ void VerletIntegration(uint3 ThreadId : SV_DispatchThreadID)
 	// // update position using verlet
 	float3 NewPos = CurrentPos * 2.f - PrePos + (SimParams.DT * SimParams.DT ) * Acc;
 	
-	Velocities[Index] += Acc * SimParams.DT;
+	Velocities[Index] = (NewPos - PrePos) * SimParams.InvDT * 0.5;
 	Pre_Positions[Index] = CurrentPos;
 	Positions[Index] = NewPos;
 }

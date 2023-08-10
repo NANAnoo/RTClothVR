@@ -2,16 +2,35 @@
 
 DECLARE_STATS_GROUP(TEXT("RTCloth"), STATGROUP_RTCloth_Implicit, STATCAT_Advanced);
 DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Implicit, STATGROUP_RTCloth_Implicit);
-DECLARE_CYCLE_STAT(TEXT("ForcesAndDerivatives"), ForcesAndDerivatives_Implicit,STATGROUP_RTCloth_Implicit);
+DECLARE_CYCLE_STAT(TEXT("StretchConditions"), StretchConditions_Implicit,STATGROUP_RTCloth_Implicit);
+DECLARE_CYCLE_STAT(TEXT("ShearConditions"), ShearConditions_Implicit,STATGROUP_RTCloth_Implicit);
+DECLARE_CYCLE_STAT(TEXT("BendConditions"), BendConditions_Implicit,STATGROUP_RTCloth_Implicit);
 DECLARE_CYCLE_STAT(TEXT("Solve Linear Equation"), SolveLinearEquation_Implicit,STATGROUP_RTCloth_Implicit);
+
+// pseudo code
+// void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
+// {
+//     FRTClothSystemBase::TickOnce(Duration);
+//     //StretchForcesAndDerivatives();
+//     //ShearForcesAndDerivatives();
+//     //BendForcesAndDerivatives();
+//     ...
+//     // assemble equations
+//     // A = M -dfdx * dt * dt - dfdv * dt;
+//     // b = f * dt + dfdx * v * dt * dt;
+//     // solve equation
+//     TArray<float> dV;
+//     Solver->Solve(A, B, dV);
+//     // UpdatePositions()
+//     ...
+// }
 
 void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
 {
-    SCOPE_CYCLE_COUNTER(TIME_COST_Implicit);
     FRTClothSystemBase::TickOnce(Duration);
+    SCOPE_CYCLE_COUNTER(TIME_COST_Implicit);
     if (!IsFirstFrame)
     {
-        SCOPE_CYCLE_COUNTER(ForcesAndDerivatives_Implicit)
         ForcesAndDerivatives();
     }
     if (M_Material.EnableInnerCollision)
@@ -48,6 +67,7 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
     for (auto const Id : ConsIds)
         ConsMats.Add(Constraints[Id]);
     Solver->UpdateConstraints(ConsIds, ConsMats);
+    Solver->UpdateVelocityConstraints(-DeltaClothAttachedVelocity);
     // solve equation
     TArray<float> dV;
     dV.SetNumZeroed(Velocity.Num() * 3);
@@ -65,6 +85,7 @@ void FRTClothSystem_ImplicitIntegration_CPU::TickOnce(float Duration)
     TArray<FVector> Pre_Positions;
     if (M_Material.EnableCollision)
         SolveCollision(Pre_Positions, Mesh->Positions, Velocity, Duration);
+        
 }
 
 void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
@@ -76,8 +97,8 @@ void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
     Df_Dx.SetValues(0.f);
     Df_Dv.SetValues(0.f);
 
-    if (M_Material.K_Bend > 0.01)
     {
+        SCOPE_CYCLE_COUNTER(BendConditions_Implicit);
         for (auto &Con : BendConditions)
         {
             Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
@@ -85,8 +106,8 @@ void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
             Con.ComputeDerivatives(M_Material.K_Bend, M_Material.D_Bend, Df_Dx, Df_Dx, Df_Dv);
         }
     }
-    if (M_Material.K_Shear > 0.01)
     {
+        SCOPE_CYCLE_COUNTER(ShearConditions_Implicit);
         for (auto &Con : ShearConditions)
         {
             Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
@@ -94,17 +115,20 @@ void FRTClothSystem_ImplicitIntegration_CPU::ForcesAndDerivatives()
             Con.ComputeDerivatives(M_Material.K_Shear, M_Material.D_Shear, Df_Dx, Df_Dx, Df_Dv);
         }
     }
-    
-    for (auto &Con : StretchConditions)
+
     {
-        Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
-        Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
-        Con.ComputeDerivatives(M_Material.K_Stretch, M_Material.D_Stretch, Df_Dx, Df_Dx, Df_Dv);
+        SCOPE_CYCLE_COUNTER(StretchConditions_Implicit);
+        for (auto &Con : StretchConditions)
+        {
+            Con.UpdateCondition(Mesh->Positions, Velocity, Mesh->TexCoords);
+            Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+            Con.ComputeDerivatives(M_Material.K_Stretch, M_Material.D_Stretch, Df_Dx, Df_Dx, Df_Dv);
+        }
     }
     
     for (int i = 0; i < Masses.Num(); i ++)
     {
-        Forces[i] += - M_Material.GlobalDamping * Velocity[i] * Masses[i];
+        Forces[i] += - M_Material.AirFriction * (Velocity[i] - WindVelocity) * Masses[i];
     }
 }
 

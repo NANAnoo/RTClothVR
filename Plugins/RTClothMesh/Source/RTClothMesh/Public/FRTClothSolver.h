@@ -12,7 +12,7 @@ public:
 	virtual void Init(FRTBBSSMatrix<Real> const&) = 0;
 	virtual void Solve(FRTBBSSMatrix<Real> & A, TArray<Real> const& B, TArray<Real> &X) = 0;
 	virtual void UpdateConstraints(TArray<uint32> const&Ids, TArray<FRTMatrix<Real, 3,3>> const& Mats) = 0;
-	virtual void UpdateVelocityConstraints(TArray<Real> const& Cons) = 0;
+	virtual void UpdateVelocityConstraints(FVector const&Vel) = 0;
 	virtual ~IRTLinearSolver() {}
 protected:
 	Real Tolerance;

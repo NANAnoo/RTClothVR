@@ -10,7 +10,6 @@ BEGIN_GLOBAL_SHADER_PARAMETER_STRUCT(FRTClothSimulationParameters, )
 // for bend condition
 SHADER_PARAMETER(float, K_Bend)
 SHADER_PARAMETER(float, D_Bend)
-
 // for stretch condition
 SHADER_PARAMETER(float, K_Stretch)
 SHADER_PARAMETER(float, D_Stretch)
@@ -18,28 +17,31 @@ SHADER_PARAMETER(float, D_Stretch)
 // for shear condition
 SHADER_PARAMETER(float, K_Shear)
 SHADER_PARAMETER(float, D_Shear)
-
 // rest U V
 SHADER_PARAMETER(float, Rest_U)
 SHADER_PARAMETER(float, Rest_V)
 
 // duration
 SHADER_PARAMETER(float, DT)
-
-// bend initial angle
-SHADER_PARAMETER(float, InitTheta)
-
+SHADER_PARAMETER(float, InvDT)
 // collision spring K
 SHADER_PARAMETER(float, K_Collision)
-
 // collision spring D
 SHADER_PARAMETER(float, D_Collision)
 
+// bend initial angle
+SHADER_PARAMETER(float, InitTheta)
 // Number of external colliders
 SHADER_PARAMETER(unsigned int, NumOfExColliders)
-
 // global damping
-SHADER_PARAMETER(float, GlobalDamping)
+SHADER_PARAMETER(float, AirFriction)
+SHADER_PARAMETER(float, padding1)
+
+SHADER_PARAMETER(FVector, VelocityConstraint)
+SHADER_PARAMETER(float, padding2)
+
+SHADER_PARAMETER(FVector, WindVelocity)
+SHADER_PARAMETER(float, padding3)
 
 END_GLOBAL_SHADER_PARAMETER_STRUCT()
 

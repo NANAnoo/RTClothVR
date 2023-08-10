@@ -31,7 +31,7 @@ class URTClothMeshComponent : public UMeshComponent
 
 public:
 	
-	UPROPERTY(EditAnywhere, Category = ClothParameters)
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Solver_Type"))
 	TEnumAsByte<FRTClothSolverType> PlainEnum = CPU_Verlet;
 	
 	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="K_Stretch", ClampMin="0", ClampMax="10000"))
@@ -76,8 +76,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="Collision"))
 	bool EnableCollision = true;
 
-	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="GlobalDamping", ClampMin="0", ClampMax="1"))
-	float GlobalDamping = 0.5;
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="AirFriction", ClampMin="0", ClampMax="1"))
+	float AirFriction = 0.5;
+
+	UPROPERTY(EditAnywhere, Category = ClothParameters, meta=(DisplayName="WindVelocity", ClampMin="0", ClampMax="1000"))
+	FVector WindVelocity = {0, 0, 0};
 
 private:
 	// setup cloth mesh and cloth system in RenderThread

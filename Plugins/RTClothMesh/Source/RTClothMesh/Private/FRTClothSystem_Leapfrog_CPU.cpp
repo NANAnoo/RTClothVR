@@ -1,8 +1,11 @@
 ﻿#include "FRTClothSystem_Leapfrog_CPU.h"
 
 DECLARE_STATS_GROUP(TEXT("RTCloth(leapfrog)"), STATGROUP_RTCloth_LeapFrog, STATCAT_Advanced);
-DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_LeapFrog, STATGROUP_RTCloth_LeapFrog);
-DECLARE_CYCLE_STAT(TEXT("GetAcceleration(leapfrog)"), Acceleration_LeapFrog, STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("One Frame Cost"), TIME_COST_Leapfrog, STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("StretchConditions"), StretchConditions_Leapfrog,STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("ShearConditions"), ShearConditions_Leapfrog,STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("BendConditions"), BendConditions_Leapfrog,STATGROUP_RTCloth_LeapFrog);
+DECLARE_CYCLE_STAT(TEXT("Integration"), Integration_Leapfrog,STATGROUP_RTCloth_LeapFrog);
 
 void FRTClothSystem_Leapfrog_CPU::Acceleration()
 {
@@ -13,25 +16,34 @@ void FRTClothSystem_Leapfrog_CPU::Acceleration()
 	}
 
 	// calculate forces
-	for (auto &Con : StretchConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(StretchConditions_Leapfrog)
+		for (auto &Con : StretchConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			Con.ComputeForces(M_Material.K_Stretch, M_Material.D_Stretch, Forces, Forces);
+		}
 	}
-	for (auto &Con : ShearConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		// Serious numerical un-stability meet while using original Shader Damping
-		Con.ComputeForces(M_Material.K_Shear, 0, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(ShearConditions_Leapfrog)
+		for (auto &Con : ShearConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			// Serious numerical un-stability meet while using original Shader Damping
+			Con.ComputeForces(M_Material.K_Shear, M_Material.D_Shear, Forces, Forces);
+		}
 	}
-	for (auto &Con : BendConditions)
 	{
-		Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
-		Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
+		SCOPE_CYCLE_COUNTER(BendConditions_Leapfrog)
+		for (auto &Con : BendConditions)
+		{
+			Con.UpdateCondition(Mesh->Positions, Velocities, Mesh->TexCoords);
+			Con.ComputeForces(M_Material.K_Bend, M_Material.D_Bend, Forces, Forces);
+		}
 	}
 	for (int i = 0; i < Masses.Num(); i ++)
 	{
-		Forces[i] += - M_Material.GlobalDamping * Velocities[i] * Masses[i];
+		Forces[i] += - M_Material.AirFriction * (Velocities[i] - WindVelocity) * Masses[i];
 	}
 }
 
@@ -87,15 +99,11 @@ void FRTClothSystem_Leapfrog_CPU::PrepareSimulation()
 
 void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 {
-	SCOPE_CYCLE_COUNTER(TIME_COST_LeapFrog)
+	SCOPE_CYCLE_COUNTER(TIME_COST_Leapfrog)
 	FRTClothSystemBase::TickOnce(Duration);
 	// Update Velocity_Half
 	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
-		if (Constraints.Contains(i))
-		{
-			Pre_As[i] = Constraints[i] * Pre_As[i];
-		}
 		Velocities_Half[i] = Velocities[i] + (Duration / 2) * Pre_As[i];
 	}
 	
@@ -106,12 +114,9 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 		Velocities[i] += Duration * Pre_As[i];
 	}
 	TArray<FVector> Pre_Positions;
-	if (M_Material.EnableCollision)
-		SolveCollision(Pre_Positions, Mesh->Positions, Velocities, Duration);
 
 	// Get new acc and update V_{i+1}
 	{
-		SCOPE_CYCLE_COUNTER(Acceleration_LeapFrog);
 		Acceleration();
 	}
 	
@@ -120,16 +125,21 @@ void FRTClothSystem_Leapfrog_CPU::TickOnce(float Duration)
 		UpdateTriangleProperties(Mesh->Positions, Velocities);
 		AddCollisionSpringForces(Forces, Mesh->Positions, Velocities);
 	}
-	for (int32 i = 0; i < Masses.Num(); i ++)
 	{
-		auto const Acc = Forces[i] / Masses[i];
-		Pre_As[i] = Acc;
-		if (Constraints.Contains(i))
+		SCOPE_CYCLE_COUNTER(Integration_Leapfrog)
+		for (int32 i = 0; i < Masses.Num(); i ++)
 		{
-			Pre_As[i] = Constraints[i] * Pre_As[i];
+			auto const Acc = Forces[i] / Masses[i] + DeltaClothAttachedVelocity / Duration;
+			Pre_As[i] = Acc;
+			if (Constraints.Contains(i))
+			{
+				Pre_As[i] = Constraints[i] * Pre_As[i];
+			}
+			Velocities[i] = Velocities_Half[i] + (Duration / 2) * Pre_As[i];
 		}
-		Velocities[i] = Velocities_Half[i] + (Duration / 2) * Pre_As[i];
 	}
+	if (M_Material.EnableCollision)
+		SolveCollision(Pre_Positions, Mesh->Positions, Velocities, Duration);
 }
 
 

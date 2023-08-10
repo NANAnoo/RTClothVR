@@ -18,11 +18,13 @@ void FModifiedCGSolver::Solve(FRTBBSSMatrix<float> & A, TArray<float> const& B, 
 	}
 	uint32 const Size = X.Num();
 	// set up velocity constraints
-	if (VelConstrains.Num() == Size)
+	if (VelConstraint.Size() > 0)
 	{
-		for (uint32 i = 0; i < Size; i ++)
+		for (uint32 i = 0; i < Size / 3; i ++)
 		{
-			X[i] = VelConstrains[i];
+			X[3 * i] = VelConstraint[0];
+			X[3 * i + 1] = VelConstraint[1];
+			X[3 * i + 2] = VelConstraint[2];
 		}
 	}
 
