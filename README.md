@@ -9,9 +9,9 @@ D. Baraff and A. Witkin, “Large steps in cloth simulation,” Proceedings of t
 
 | Integrator | CPU | GPU Computer Shader|
 |------------|-----|--------------------|
-| Implicit | :white_check_mark | :white_large_square |
-| LeapFrog | :white_check_mark  | :white_large_square|
-| Verlet | :white_check_mark  | :white_check_mark|
+| Implicit | :white_check_mark: | :white_large_square: |
+| LeapFrog | :white_check_mark:  | :white_large_square: |
+| Verlet | :white_check_mark:  | :white_check_mark: |
 
 ## Support Features
 
