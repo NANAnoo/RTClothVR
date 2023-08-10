@@ -33,9 +33,10 @@ D. Baraff and A. Witkin, “Large steps in cloth simulation,” Proceedings of t
 - Launch the UE4 Editor by double click `RTClothVR.uproject`.
 - Add Component `RTClothMesh` to one of a static mesh actor in the game scene. It should look like the figure below:
 <img src='./screenshoots/LoadTShirt.png'>
-- Simulation parameters can be modified in `ClothParameters` section of the detial panel.
+- Simulation parameters can be modified in `Cloth Parameters` section of the detail panel.
 
 ## Some of the results
+
 
 Positional Constraints
 ![Alt text](./screenshoots/image.png)
