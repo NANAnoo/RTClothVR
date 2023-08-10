@@ -1,6 +1,6 @@
 # RTClothVR
 
-This project is used for learning real-time cloth simulation and exploring the feasiablity of performing real-tie cloth simulation to VR applications. The cloth model is basically comes from:
+This project is used for learning real-time cloth simulation and exploring the feasiablity of performing real-time cloth simulation for VR applications. The cloth model is basically comes from:
 
 >"
 D. Baraff and A. Witkin, “Large steps in cloth simulation,” Proceedings of the 25th annual conference on Computer graphics and interactive techniques  - SIGGRAPH ’98, 1998, doi: https://doi.org/10.1145/280814.280821."
