@@ -1,5 +1,7 @@
 #include "FRTBendCondition.h"
 
+// refer to part of the implementation of https://github.com/davvm/clothSim/blob/master/src/simLib/BendCondition.cpp
+
 void FRTBendCondition::UpdateCondition(
 		TArray<FVector> const& X, TArray<FVector> const& V,TArray<FVector2D> const& UV
 	)

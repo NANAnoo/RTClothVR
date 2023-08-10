@@ -128,6 +128,7 @@ public:
 
 		FMaterialRenderProxy const* MaterialProxy = bWireFrame ? WireframeMaterialInstance : Material->GetRenderProxy();
 
+		// refer the code from \Engine\Plugins\Runtime\ProceduralMeshComponent\Source\ProceduralMeshComponent\Private\ProceduralMeshComponent.cpp
 		for (int32 ViewIndex = 0; ViewIndex < Views.Num(); ViewIndex ++)
 		{
 			if (VisibilityMap & (1 << ViewIndex))
@@ -295,7 +296,7 @@ void URTClothMeshComponent::OnRegister()
 					,K_Collision,D_Collision, AirFriction, EnableCollision, EnableInnerCollision}
 				);
 			ClothSystem->UpdateTransform(ClothMesh->LocalToWorld, 0.005);
-			// add a hit box to perform collision from UE4 objects
+			// add a hit box that wrap the cloth to perform collision from UE4 objects
 			if (EnableCollision)
 			{
 				if (!HitBox)
@@ -308,10 +309,10 @@ void URTClothMeshComponent::OnRegister()
 					HitBox->AttachToComponent(GetOwner()->GetRootComponent(), FAttachmentTransformRules::KeepRelativeTransform);
 					HitBox->InitBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
 					HitBox->SetCollisionProfileName(TEXT("OverlapAllDynamic"));
+					// can be removed, enable this for debugging bounding box
 					HitBox->SetHiddenInGame(false);
 				}
 			
-				// when component is dynamically created, you can use AttachToComponent, not SetupAttachment
 				HitBox->SetRelativeLocation((ClothSystem->BoundingBoxMax() + ClothSystem->BoundingBoxMin()) / 2);
 				HitBox->SetBoxExtent((ClothSystem->BoundingBoxMax() - ClothSystem->BoundingBoxMin()) / 2);
 			} else

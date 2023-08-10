@@ -107,6 +107,7 @@ void FRTClothSystemBase::_UpdateMesh(std::shared_ptr<FClothRawMesh> const&AMesh)
     // }
 }
 
+// refer to https://github.com/NANAnoo/A1_manifold_test/blob/main/manifold_test/DirectedEdge.cpp
 void FRTClothSystemBase::MakeDirectedEdgeModel()
 {
     this->first_directed_edge_of_vertex.SetNumZeroed(this->Mesh->Positions.Num());
