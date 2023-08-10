@@ -294,7 +294,7 @@ void URTClothMeshComponent::OnRegister()
 					Rest_U, Rest_V, Density, InitTheta / 180 * PI
 					,K_Collision,D_Collision, AirFriction, EnableCollision, EnableInnerCollision}
 				);
-
+			ClothSystem->UpdateTransform(ClothMesh->LocalToWorld, 0.005);
 			// add a hit box to perform collision from UE4 objects
 			if (EnableCollision)
 			{
