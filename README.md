@@ -50,5 +50,9 @@ External Collision
 Internal Collision
 ![Alt text](./screenshoots/Collision2.png)
 
-Simulating three pieces of cloth which have size of 64 x 64
+Simulating three pieces of cloth which have a size of 64 x 64
 ![Alt text](./screenshoots/3x64x64.png)
+
+More results can be seen in the following videos:
+https://www.bilibili.com/video/BV1Yu4y1R79L
+https://www.bilibili.com/video/BV1iP411x7yr
